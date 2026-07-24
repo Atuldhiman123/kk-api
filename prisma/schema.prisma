@@ -1,0 +1,206 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BookingStatus {
+  Pending
+  Confirmed
+  Completed
+  Cancelled
+}
+
+enum PaymentStatus {
+  Pending
+  Paid
+  Failed
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String   @unique
+  email     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  birthProfiles BirthProfile[]
+  bookings      Booking[]
+
+  @@map("users")
+}
+
+model BirthProfile {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  profileName String   @map("profile_name")
+  dob         DateTime @db.Date
+  timeOfBirth String?  @map("time_of_birth")
+  birthPlace  String   @map("birth_place")
+  gender      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@index([userId])
+  @@map("birth_profiles")
+}
+
+model ConsultationCategory {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  description     String?
+  durationMinutes Int      @map("duration_minutes")
+  price           Decimal  @db.Decimal(10, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+
+  bookings          Booking[]
+  comboOfferEntries ComboOfferCategory[]
+
+  @@map("consultation_categories")
+}
+
+model ComboOffer {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  description     String?
+  discountedPrice Decimal  @db.Decimal(10, 2) @map("discounted_price")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  categories ComboOfferCategory[]
+  bookings   Booking[]
+
+  @@map("combo_offers")
+}
+
+model ComboOfferCategory {
+  id           String @id @default(uuid())
+  comboOfferId String @map("combo_offer_id")
+  categoryId   String @map("category_id")
+
+  comboOffer ComboOffer            @relation(fields: [comboOfferId], references: [id], onDelete: Cascade)
+  category   ConsultationCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([comboOfferId, categoryId])
+  @@map("combo_offer_categories")
+}
+
+model WeeklyAvailability {
+  id        String   @id @default(uuid())
+  dayOfWeek Int      @map("day_of_week")
+  startTime String   @map("start_time")
+  endTime   String   @map("end_time")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([dayOfWeek])
+  @@map("weekly_availability")
+}
+
+model Booking {
+  id              String        @id @default(uuid())
+  userId          String        @map("user_id")
+  birthProfileId  String        @map("birth_profile_id")
+  categoryId      String?       @map("category_id")
+  comboOfferId    String?       @map("combo_offer_id")
+  bookingDate     DateTime      @db.Date @map("booking_date")
+  slotTime        String        @map("slot_time")
+  durationMinutes Int           @map("duration_minutes")
+  amount          Decimal       @db.Decimal(10, 2)
+  notes           String?
+  bookingStatus   BookingStatus @default(Pending) @map("booking_status")
+  paymentStatus   PaymentStatus @default(Pending) @map("payment_status")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  user         User                  @relation(fields: [userId], references: [id])
+  birthProfile BirthProfile          @relation(fields: [birthProfileId], references: [id])
+  category     ConsultationCategory? @relation(fields: [categoryId], references: [id])
+  comboOffer   ComboOffer?           @relation(fields: [comboOfferId], references: [id])
+  payments     BookingPayment[]
+
+  @@index([bookingDate])
+  @@map("bookings")
+}
+
+model BookingPayment {
+  id                String        @id @default(uuid())
+  bookingId         String        @map("booking_id")
+  amount            Decimal       @db.Decimal(10, 2)
+  paymentMethod     String        @map("payment_method")
+  transactionId     String?       @map("transaction_id")
+  paymentScreenshot String?       @map("payment_screenshot")
+  status            PaymentStatus @default(Pending)
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@map("booking_payments")
+}
+
+model Gemstone {
+  id                String   @id @default(uuid())
+  name              String
+  slug              String   @unique
+  shortDescription  String?  @map("short_description")
+  description       String?
+  benefits          String?
+  whoShouldWear     String?  @map("who_should_wear")
+  weightOptions     String?  @map("weight_options")
+  certification     String?
+  careInstructions  String?  @map("care_instructions")
+  price             Decimal  @db.Decimal(10, 2)
+  image             String?
+  isFeatured        Boolean  @default(false) @map("is_featured")
+  isActive          Boolean  @default(true) @map("is_active")
+
+  images GemstoneImage[]
+
+  @@map("gemstones")
+}
+
+model GemstoneImage {
+  id         String @id @default(uuid())
+  gemstoneId String @map("gemstone_id")
+  imageUrl   String @map("image_url")
+  sortOrder  Int    @default(0) @map("sort_order")
+
+  gemstone Gemstone @relation(fields: [gemstoneId], references: [id], onDelete: Cascade)
+
+  @@index([gemstoneId])
+  @@map("gemstone_images")
+}
+
+model PaymentConfig {
+  id           String  @id @default(uuid())
+  upiName      String  @map("upi_name")
+  upiId        String  @map("upi_id")
+  phone        String?
+  qrImage      String? @map("qr_image")
+  instructions String?
+  isActive     Boolean @default(true) @map("is_active")
+
+  @@map("payment_config")
+}
+
+model Admin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("admins")
+}
