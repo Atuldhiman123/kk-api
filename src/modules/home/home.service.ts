@@ -94,11 +94,18 @@ export class HomeService {
 
   async getHome() {
     const [categories, combos, paymentConfig] = await Promise.all([
-      this.consultationService.findAll(),
-      this.comboOfferService.findAll(),
+      this.consultationService.findAll().catch((err) => {
+        console.error('Failed to fetch categories for home:', err);
+        return [];
+      }),
+      this.comboOfferService.findAll().catch((err) => {
+        console.error('Failed to fetch combos for home:', err);
+        return [];
+      }),
       this.paymentService.getActiveConfig().catch((err) => {
         if (err instanceof NotFoundException) return null;
-        throw err;
+        console.error('Failed to fetch payment config for home:', err);
+        return null;
       }),
     ]);
 

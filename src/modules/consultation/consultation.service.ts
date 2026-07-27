@@ -5,11 +5,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class ConsultationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return this.prisma.consultationCategory.findMany({
-      where: { isActive: true },
-      orderBy: { name: 'asc' },
-    });
+  async findAll() {
+    try {
+      return await this.prisma.consultationCategory.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+      });
+    } catch (err) {
+      console.error('Failed to fetch consultation categories:', err);
+      return [];
+    }
   }
 
   async findBySlug(slug: string) {

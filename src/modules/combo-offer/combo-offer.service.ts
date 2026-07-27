@@ -22,12 +22,17 @@ export class ComboOfferService {
   }
 
   async findAll() {
-    const combos = await this.prisma.comboOffer.findMany({
-      where: { isActive: true },
-      include: comboInclude,
-      orderBy: { name: 'asc' },
-    });
-    return combos.map((combo) => this.withOriginalPrice(combo));
+    try {
+      const combos = await this.prisma.comboOffer.findMany({
+        where: { isActive: true },
+        include: comboInclude,
+        orderBy: { name: 'asc' },
+      });
+      return combos.map((combo) => this.withOriginalPrice(combo));
+    } catch (err) {
+      console.error('Failed to fetch combo offers:', err);
+      return [];
+    }
   }
 
   async findBySlug(slug: string) {
