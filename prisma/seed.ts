@@ -153,10 +153,11 @@ async function main() {
   if (!existingPaymentConfig) {
     await prisma.paymentConfig.create({
       data: {
-        upiName: 'Astro Consultation',
-        upiId: 'astroconsult@upi',
+        upiName: 'Kundli Kendra Official',
+        upiId: 'atuldhiman.1998@okicici',
+        qrImage: '/upi-qr.jpg',
         phone: '+91 98765 43210',
-        instructions: 'Pay the exact amount via UPI, then upload a screenshot of the successful payment.',
+        instructions: 'Scan the Google Pay QR code using Google Pay, PhonePe, Paytm, or any UPI App. Enter the transaction ID and upload a screenshot of your payment confirmation.',
         isActive: true,
       },
     });
