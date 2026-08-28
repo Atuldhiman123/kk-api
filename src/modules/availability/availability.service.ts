@@ -24,25 +24,17 @@ export class AvailabilityService {
       throw new BadRequestException('date is not a valid calendar date');
     }
 
-    const dayOfWeek = date.day();
-
-    const ranges = await this.prisma.weeklyAvailability.findMany({
-      where: { dayOfWeek, isActive: true },
-    });
-
-    if (ranges.length === 0) {
-      return [];
-    }
+    const dayOfWeek = date.day(); // 0 is Sunday, 1-5 is Mon-Fri, 6 is Sat
+    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+    const startHour = isWeekday ? 20 : 10; // Weekdays: 8 PM, Weekends: 10 AM
 
     const allSlots = new Set<string>();
-    for (const range of ranges) {
-      for (const slot of this.generateSlots(
-        date,
-        range.startTime,
-        range.endTime,
-      )) {
-        allSlots.add(slot);
-      }
+    let current = date.hour(startHour).minute(0).second(0);
+    const end = date.hour(23).minute(30).second(0); // Last slot starts at 11:30 PM (ends at 12:00 AM)
+
+    while (current.isBefore(end) || current.isSame(end)) {
+      allSlots.add(current.format('hh:mm A'));
+      current = current.add(SLOT_STEP_MINUTES, 'minute');
     }
 
     const bookings = await this.prisma.booking.findMany({
@@ -72,29 +64,6 @@ export class AvailabilityService {
           dayjs(`2000-01-01 ${b}`, 'YYYY-MM-DD hh:mm A'),
         ),
       );
-
-    return slots;
-  }
-
-  private generateSlots(
-    date: ReturnType<typeof dayjs>,
-    startTime: string,
-    endTime: string,
-  ): string[] {
-    const slots: string[] = [];
-    let cursor = dayjs(
-      `${date.format('YYYY-MM-DD')} ${startTime}`,
-      'YYYY-MM-DD HH:mm',
-    );
-    const end = dayjs(
-      `${date.format('YYYY-MM-DD')} ${endTime}`,
-      'YYYY-MM-DD HH:mm',
-    );
-
-    while (cursor.isBefore(end)) {
-      slots.push(cursor.format('hh:mm A'));
-      cursor = cursor.add(SLOT_STEP_MINUTES, 'minute');
-    }
 
     return slots;
   }

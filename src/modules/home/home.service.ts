@@ -77,9 +77,9 @@ const FAQS = [
 ];
 
 const CONTACT = {
-  phone: '+91 98765 43210',
-  whatsapp: '+91 98765 43210',
-  email: 'contact@astrologyconsultation.com',
+  phone: '+91 93171 17001',
+  whatsapp: '+91 93171 17001',
+  email: 'kundlikendra1998@gmail.com',
   address: 'Office Address, City, State, India',
   mapsUrl: 'https://maps.google.com',
 };
