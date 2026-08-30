@@ -4,10 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AvailabilityService } from '../availability/availability.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { dateOnlyToUtcDate } from '../../common/date-only';
+import Razorpay from 'razorpay';
+import * as crypto from 'crypto';
 
 const ACTIVE_BOOKING_STATUSES = ['Pending', 'Confirmed', 'Completed'] as const;
 
@@ -16,6 +20,7 @@ export class BookingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly availabilityService: AvailabilityService,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(dto: CreateBookingDto) {
@@ -65,13 +70,20 @@ export class BookingService {
     }
 
     const bookingDate = dateOnlyToUtcDate(dto.bookingDate);
+    const paymentMethod = dto.paymentMethod ?? 'UPI';
 
     const booking = await this.prisma.$transaction(async (tx) => {
       const clash = await tx.booking.findFirst({
         where: {
           bookingDate,
           slotTime: dto.slot,
-          bookingStatus: { in: [...ACTIVE_BOOKING_STATUSES] },
+          OR: [
+            { bookingStatus: { in: ['Confirmed', 'Completed'] } },
+            {
+              bookingStatus: 'Pending',
+              createdAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+            },
+          ],
         },
       });
       if (clash) {
@@ -115,16 +127,108 @@ export class BookingService {
         data: {
           bookingId: created.id,
           amount,
-          paymentMethod: 'UPI',
-          transactionId: dto.transactionId,
-          paymentScreenshot: dto.paymentScreenshot,
+          paymentMethod,
+          status: 'Pending',
         },
       });
 
       return created;
     });
 
+    if (paymentMethod === 'Razorpay') {
+      const razorpay = new Razorpay({
+        key_id: this.configService.get<string>('RAZORPAY_KEY_ID') || '',
+        key_secret: this.configService.get<string>('RAZORPAY_KEY_SECRET') || '',
+      });
+
+      try {
+        const order = await razorpay.orders.create({
+          amount: Math.round(amount * 100),
+          currency: 'INR',
+          receipt: booking.id,
+        });
+
+        await this.prisma.bookingPayment.updateMany({
+          where: { bookingId: booking.id, status: 'Pending' },
+          data: { transactionId: order.id },
+        });
+
+        return {
+          ...booking,
+          razorpayOrder: {
+            id: order.id,
+            amount: order.amount,
+            currency: order.currency,
+            keyId: this.configService.get<string>('RAZORPAY_KEY_ID') || '',
+          },
+        };
+      } catch (err: any) {
+        await this.prisma.booking.update({
+          where: { id: booking.id },
+          data: { bookingStatus: 'Cancelled' },
+        });
+        throw new BadRequestException(`Failed to initialize payment gateway: ${err.message}`);
+      }
+    } else {
+      await this.prisma.bookingPayment.updateMany({
+        where: { bookingId: booking.id, status: 'Pending' },
+        data: {
+          transactionId: dto.transactionId,
+          paymentScreenshot: dto.paymentScreenshot,
+        },
+      });
+    }
+
     return this.findById(booking.id);
+  }
+
+  async verifyPayment(dto: VerifyPaymentDto) {
+    const { bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = dto;
+
+    const keySecret = this.configService.get<string>('RAZORPAY_KEY_SECRET');
+    if (!keySecret) {
+      throw new BadRequestException('Razorpay credentials not configured');
+    }
+
+    const hmac = crypto.createHmac('sha256', keySecret);
+    hmac.update(`${razorpayOrderId}|${razorpayPaymentId}`);
+    const generatedSignature = hmac.digest('hex');
+
+    if (generatedSignature !== razorpaySignature) {
+      throw new BadRequestException('Invalid payment signature');
+    }
+
+    const payment = await this.prisma.bookingPayment.findFirst({
+      where: {
+        bookingId,
+        transactionId: razorpayOrderId,
+        status: 'Pending',
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Pending payment record not found');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          bookingStatus: 'Confirmed',
+          paymentStatus: 'Paid',
+        },
+      });
+
+      await tx.bookingPayment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'Paid',
+          transactionId: razorpayPaymentId,
+        },
+      });
+    });
+
+    return { success: true, message: 'Payment verified and booking confirmed' };
   }
 
   async findById(id: string) {

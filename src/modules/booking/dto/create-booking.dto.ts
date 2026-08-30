@@ -80,6 +80,11 @@ export class CreateBookingDto {
   notes?: string;
 
   // Step 5 - payment
+  @ApiPropertyOptional({ enum: ['UPI', 'Razorpay'], default: 'UPI' })
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

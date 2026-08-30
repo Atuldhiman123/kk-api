@@ -40,7 +40,13 @@ export class AvailabilityService {
     const bookings = await this.prisma.booking.findMany({
       where: {
         bookingDate: dateOnlyToUtcDate(dateStr),
-        bookingStatus: { in: [...ACTIVE_BOOKING_STATUSES] },
+        OR: [
+          { bookingStatus: { in: ['Confirmed', 'Completed'] } },
+          {
+            bookingStatus: 'Pending',
+            createdAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+          },
+        ],
       },
       select: { slotTime: true },
     });
