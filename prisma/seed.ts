@@ -215,7 +215,7 @@ async function main() {
     await prisma.paymentConfig.create({
       data: {
         upiName: 'Kundli Kendra Official',
-        upiId: 'atuldhiman.1998@okicici',
+        upiId: 'atuldhiman.1998@okaxis',
         qrImage: '/upi-qr.jpg',
         phone: '+91 98765 43210',
         instructions: 'Scan the Google Pay QR code using Google Pay, PhonePe, Paytm, or any UPI App. Enter the transaction ID and upload a screenshot of your payment confirmation.',
