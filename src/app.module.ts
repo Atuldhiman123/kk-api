@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
@@ -15,6 +15,8 @@ import { BookingModule } from './modules/booking/booking.module';
 import { GemstoneModule } from './modules/gemstone/gemstone.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { MailModule } from './modules/mail/mail.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { AdminModule } from './modules/admin/admin.module';
     GemstoneModule,
     AuthModule,
     AdminModule,
+    MailModule,
+    WhatsappModule,
   ],
   controllers: [AppController],
   providers: [AppService],

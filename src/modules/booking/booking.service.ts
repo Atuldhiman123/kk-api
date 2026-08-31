@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   ConflictException,
   Injectable,
@@ -7,6 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AvailabilityService } from '../availability/availability.service';
+import { MailService } from '../mail/mail.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { dateOnlyToUtcDate } from '../../common/date-only';
@@ -21,6 +23,8 @@ export class BookingService {
     private readonly prisma: PrismaService,
     private readonly availabilityService: AvailabilityService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
+    private readonly whatsappService: WhatsappService,
   ) {}
 
   async create(dto: CreateBookingDto) {
@@ -153,8 +157,15 @@ export class BookingService {
           data: { transactionId: order.id },
         });
 
+        const fullBooking = await this.findById(booking.id);
+
+        // Async dispatch confirmation email & WhatsApp alert
+        this.mailService.sendBookingConfirmation(fullBooking).catch(() => {});
+        this.mailService.sendAdminBookingAlert(fullBooking).catch(() => {});
+        this.whatsappService.sendAdminBookingAlert(fullBooking).catch(() => {});
+
         return {
-          ...booking,
+          ...fullBooking,
           razorpayOrder: {
             id: order.id,
             amount: order.amount,
@@ -179,7 +190,14 @@ export class BookingService {
       });
     }
 
-    return this.findById(booking.id);
+    const fullBooking = await this.findById(booking.id);
+
+    // Send customer confirmation & admin alert (Email + WhatsApp)
+    this.mailService.sendBookingConfirmation(fullBooking).catch(() => {});
+    this.mailService.sendAdminBookingAlert(fullBooking).catch(() => {});
+    this.whatsappService.sendAdminBookingAlert(fullBooking).catch(() => {});
+
+    return fullBooking;
   }
 
   async verifyPayment(dto: VerifyPaymentDto) {
@@ -227,6 +245,12 @@ export class BookingService {
         },
       });
     });
+
+    // Notify user & admin of verified payment & confirmed booking (Email + WhatsApp)
+    const confirmedBooking = await this.findById(bookingId);
+    this.mailService.sendPaymentSuccessNotification(confirmedBooking).catch(() => {});
+    this.mailService.sendAdminBookingAlert(confirmedBooking).catch(() => {});
+    this.whatsappService.sendAdminBookingAlert(confirmedBooking).catch(() => {});
 
     return { success: true, message: 'Payment verified and booking confirmed' };
   }
