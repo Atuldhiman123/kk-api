@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import dayjs from 'dayjs';
@@ -12,25 +12,35 @@ export class MailService {
     this.initializeTransporter();
   }
 
-  private initializeTransporter() {
+  public initializeTransporter() {
     const user = this.configService.get<string>('SMTP_USER')?.trim();
     const rawPass = this.configService.get<string>('SMTP_PASS') || '';
-    const pass = rawPass.replace(/\s+/g, '').trim();
+    // Clean spaces and any accidental quotes from Render input
+    const pass = rawPass.replace(/['"]+/g, '').replace(/\s+/g, '').trim();
     const host = this.configService.get<string>('SMTP_HOST') || 'smtp.gmail.com';
     const port = Number(this.configService.get<number>('SMTP_PORT')) || 465;
-    const secure = this.configService.get<string>('SMTP_SECURE') !== 'false';
 
     if (user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure,
-        auth: { user, pass },
-      });
-      this.logger.log(`MailService initialized with SMTP host: ${host} (User: ${user})`);
+      if (host.includes('gmail') || user.endsWith('@gmail.com')) {
+        // Gmail optimized transport with SSL/TLS compatibility on Render
+        this.transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user, pass },
+          tls: { rejectUnauthorized: false },
+        });
+      } else {
+        this.transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: port === 465,
+          auth: { user, pass },
+          tls: { rejectUnauthorized: false },
+        });
+      }
+      this.logger.log(`MailService initialized with SMTP for User: ${user}`);
     } else {
       this.logger.warn(
-        'MailService: SMTP_USER or SMTP_PASS not set in .env. Automated emails will be logged only.',
+        `MailService: SMTP credentials missing (User: "${user || 'none'}", Pass provided: ${Boolean(pass)}). Automated emails will be simulated.`,
       );
     }
   }
@@ -49,6 +59,54 @@ export class MailService {
       this.configService.get<string>('SMTP_USER') ||
       'kundlikendra1998@gmail.com'
     );
+  }
+
+  /**
+   * Diagnostic test email endpoint to test live SMTP on Render
+   */
+  async sendDirectTestEmail(toEmail: string): Promise<{ success: boolean; messageId?: string; error?: string; config: any }> {
+    this.initializeTransporter();
+
+    const user = this.configService.get<string>('SMTP_USER');
+    const rawPass = this.configService.get<string>('SMTP_PASS') || '';
+    const passLen = rawPass.trim().length;
+
+    const configSummary = {
+      smtpUser: user || 'NOT_SET',
+      smtpPassConfigured: passLen > 0,
+      smtpPassLength: passLen,
+      smtpHost: this.configService.get<string>('SMTP_HOST') || 'smtp.gmail.com',
+      adminEmail: this.getAdminEmail(),
+    };
+
+    if (!this.transporter) {
+      return {
+        success: false,
+        error: 'Transporter is null because SMTP_USER or SMTP_PASS is missing in server environment.',
+        config: configSummary,
+      };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: this.getFromHeader(),
+        to: toEmail,
+        subject: '🧪 Kundli Kendra - SMTP Live Test Email',
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fed7aa; border-radius: 12px;">
+            <h2 style="color: #ea580c;">🕉️ Kundli Kendra Email System Test</h2>
+            <p>Congratulations! Your backend email notification system is working perfectly on Render.</p>
+            <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+          </div>
+        `,
+      });
+
+      this.logger.log(`Test email successfully sent to ${toEmail}: ${info.messageId}`);
+      return { success: true, messageId: info.messageId, config: configSummary };
+    } catch (err: any) {
+      this.logger.error(`Test email failed to ${toEmail}: ${err.message}`);
+      return { success: false, error: err.message, config: configSummary };
+    }
   }
 
   /**
