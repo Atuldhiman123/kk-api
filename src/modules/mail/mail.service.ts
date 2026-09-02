@@ -2,6 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import dayjs from 'dayjs';
+import * as dns from 'dns';
+
+// Force IPv4 DNS resolution across Node.js to prevent Render IPv6 ENETUNREACH
+try {
+  dns.setDefaultResultOrder?.('ipv4first');
+} catch {}
 
 @Injectable()
 export class MailService {
@@ -19,20 +25,21 @@ export class MailService {
     const pass = rawPass.replace(/['"]+/g, '').replace(/\s+/g, '').trim();
 
     if (user && pass) {
-      // Cloud-optimized SMTP (Port 587 STARTTLS) - guaranteed to work on Render/AWS/Cloud
+      // Cloud-optimized SMTP (Port 587 STARTTLS + Forced IPv4 family)
       this.transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
         port: 587,
         secure: false, // true for 465, false for 587 (STARTTLS)
         auth: { user, pass },
+        family: 4, // FORCE IPv4 to fix Render ENETUNREACH on IPv6
         tls: {
           rejectUnauthorized: false,
         },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
         socketTimeout: 15000,
-      });
-      this.logger.log(`MailService initialized with SMTP Port 587 (User: ${user})`);
+      } as any);
+      this.logger.log(`MailService initialized with SMTP Port 587 IPv4 (User: ${user})`);
     } else {
       this.logger.warn(
         `MailService: SMTP credentials missing (User: "${user || 'none'}", Pass provided: ${Boolean(pass)}). Automated emails will be simulated.`,
@@ -67,7 +74,7 @@ export class MailService {
       smtpUser: user || 'NOT_SET',
       smtpPassConfigured: passLen > 0,
       smtpPassLength: passLen,
-      smtpHost: 'smtp.gmail.com:587',
+      smtpHost: 'smtp.gmail.com:587 (IPv4)',
       adminEmail: this.getAdminEmail(),
     };
 
@@ -87,7 +94,7 @@ export class MailService {
         html: `
           <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fed7aa; border-radius: 12px; background: #fffaf5;">
             <h2 style="color: #ea580c;">🕉️ Kundli Kendra Email System Test</h2>
-            <p>Congratulations! Your backend email notification system is working perfectly on Render (Port 587 STARTTLS).</p>
+            <p>Congratulations! Your backend email notification system is working perfectly on Render (Port 587 STARTTLS IPv4).</p>
             <p><strong>Recipient:</strong> ${toEmail}</p>
             <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
           </div>
@@ -118,7 +125,7 @@ export class MailService {
 
     const formattedDate = dayjs(booking.bookingDate).format('DD MMMM YYYY');
     const formattedDob = booking.birthProfile?.dob
-      ? dayjs(booking.birthProfile.dob).format('DD MMMM YYYY')
+      ? dayjs(booking.birthProfile.dob).format('DD MMM YYYY')
       : '-';
 
     const htmlContent = `
@@ -228,7 +235,7 @@ export class MailService {
 
     const formattedDate = dayjs(booking.bookingDate).format('DD MMMM YYYY');
     const formattedDob = booking.birthProfile?.dob
-      ? dayjs(booking.birthProfile.dob).format('DD MMMM YYYY')
+      ? dayjs(booking.birthProfile.dob).format('DD MMM YYYY')
       : '-';
 
     const customerPhone = booking.user?.phone || '';
