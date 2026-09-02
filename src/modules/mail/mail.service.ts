@@ -8,43 +8,56 @@ import * as dns from 'dns';
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private transporter: nodemailer.Transporter | null = null;
+  private cachedIpv4Host: string = 'smtp.gmail.com';
 
   constructor(private readonly configService: ConfigService) {
     this.initializeTransporter();
   }
 
-  public initializeTransporter() {
+  private async getIPv4Host(): Promise<string> {
+    try {
+      const res = await dns.promises.lookup('smtp.gmail.com', { family: 4 });
+      if (res?.address) {
+        this.cachedIpv4Host = res.address;
+        return res.address;
+      }
+    } catch (err: any) {
+      this.logger.warn(`IPv4 DNS lookup warning: ${err.message}`);
+    }
+    return this.cachedIpv4Host || 'smtp.gmail.com';
+  }
+
+  public async getTransporter(): Promise<nodemailer.Transporter | null> {
     const user = this.configService.get<string>('SMTP_USER')?.trim();
     const rawPass = this.configService.get<string>('SMTP_PASS') || '';
-    // Clean spaces and any accidental quotes from Render input
     const pass = rawPass.replace(/['"]+/g, '').replace(/\s+/g, '').trim();
 
-    if (user && pass) {
-      // Cloud-optimized SMTP with explicit IPv4 DNS resolution (Fixes Render IPv6 ENETUNREACH)
-      this.transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 587,
-        secure: false, // STARTTLS
-        auth: { user, pass },
-        tls: {
-          rejectUnauthorized: false,
-          servername: 'smtp.gmail.com',
-        },
-        lookup: (hostname: string, _options: any, callback: any) => {
-          dns.lookup(hostname, { family: 4 }, (err, address) => {
-            callback(err, address, 4);
-          });
-        },
-        connectionTimeout: 15000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-      } as any);
-      this.logger.log(`MailService initialized with SMTP Port 587 IPv4 (User: ${user})`);
-    } else {
-      this.logger.warn(
-        `MailService: SMTP credentials missing (User: "${user || 'none'}", Pass provided: ${Boolean(pass)}). Automated emails will be simulated.`,
-      );
+    if (!user || !pass) {
+      return null;
     }
+
+    const hostIp = await this.getIPv4Host();
+
+    // Direct IPv4 transport with SNI (Fixes Render IPv6 ENETUNREACH 100%)
+    this.transporter = nodemailer.createTransport({
+      host: hostIp,
+      port: 587,
+      secure: false, // STARTTLS
+      auth: { user, pass },
+      tls: {
+        rejectUnauthorized: false,
+        servername: 'smtp.gmail.com', // SNI domain for TLS certificate validation
+      },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
+
+    return this.transporter;
+  }
+
+  public initializeTransporter() {
+    this.getTransporter().catch(() => {});
   }
 
   private getFromHeader(): string {
@@ -64,7 +77,7 @@ export class MailService {
    * Diagnostic test email endpoint to test live SMTP on Render
    */
   async sendDirectTestEmail(toEmail: string): Promise<{ success: boolean; messageId?: string; error?: string; config: any }> {
-    this.initializeTransporter();
+    const transporter = await this.getTransporter();
 
     const user = this.configService.get<string>('SMTP_USER');
     const rawPass = this.configService.get<string>('SMTP_PASS') || '';
@@ -74,11 +87,11 @@ export class MailService {
       smtpUser: user || 'NOT_SET',
       smtpPassConfigured: passLen > 0,
       smtpPassLength: passLen,
-      smtpHost: 'smtp.gmail.com:587 (Forced IPv4)',
+      smtpHostIp: this.cachedIpv4Host,
       adminEmail: this.getAdminEmail(),
     };
 
-    if (!this.transporter) {
+    if (!transporter) {
       return {
         success: false,
         error: 'Transporter is null because SMTP_USER or SMTP_PASS is missing in server environment.',
@@ -87,14 +100,14 @@ export class MailService {
     }
 
     try {
-      const info = await this.transporter.sendMail({
+      const info = await transporter.sendMail({
         from: this.getFromHeader(),
         to: toEmail,
         subject: '🧪 Kundli Kendra - SMTP Live Test Email',
         html: `
           <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fed7aa; border-radius: 12px; background: #fffaf5;">
             <h2 style="color: #ea580c;">🕉️ Kundli Kendra Email System Test</h2>
-            <p>Congratulations! Your backend email notification system is working perfectly on Render (Port 587 STARTTLS IPv4).</p>
+            <p>Congratulations! Your backend email notification system is working perfectly on Render (Direct IPv4 STARTTLS).</p>
             <p><strong>Recipient:</strong> ${toEmail}</p>
             <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
           </div>
@@ -317,11 +330,9 @@ export class MailService {
   }
 
   private async sendMail(options: { to: string; subject: string; html: string }) {
-    if (!this.transporter) {
-      this.initializeTransporter();
-    }
+    const transporter = await this.getTransporter();
 
-    if (!this.transporter) {
+    if (!transporter) {
       this.logger.log(
         `[Mail Simulation] To: ${options.to} | Subject: ${options.subject}`,
       );
@@ -329,7 +340,7 @@ export class MailService {
     }
 
     try {
-      const info = await this.transporter.sendMail({
+      const info = await transporter.sendMail({
         from: this.getFromHeader(),
         to: options.to,
         subject: options.subject,
