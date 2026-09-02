@@ -4,11 +4,6 @@ import * as nodemailer from 'nodemailer';
 import dayjs from 'dayjs';
 import * as dns from 'dns';
 
-// Force IPv4 DNS resolution across Node.js to prevent Render IPv6 ENETUNREACH
-try {
-  dns.setDefaultResultOrder?.('ipv4first');
-} catch {}
-
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -25,17 +20,22 @@ export class MailService {
     const pass = rawPass.replace(/['"]+/g, '').replace(/\s+/g, '').trim();
 
     if (user && pass) {
-      // Cloud-optimized SMTP (Port 587 STARTTLS + Forced IPv4 family)
+      // Cloud-optimized SMTP with explicit IPv4 DNS resolution (Fixes Render IPv6 ENETUNREACH)
       this.transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
         port: 587,
-        secure: false, // true for 465, false for 587 (STARTTLS)
+        secure: false, // STARTTLS
         auth: { user, pass },
-        family: 4, // FORCE IPv4 to fix Render ENETUNREACH on IPv6
         tls: {
           rejectUnauthorized: false,
+          servername: 'smtp.gmail.com',
         },
-        connectionTimeout: 10000,
+        lookup: (hostname: string, _options: any, callback: any) => {
+          dns.lookup(hostname, { family: 4 }, (err, address) => {
+            callback(err, address, 4);
+          });
+        },
+        connectionTimeout: 15000,
         greetingTimeout: 10000,
         socketTimeout: 15000,
       } as any);
@@ -74,7 +74,7 @@ export class MailService {
       smtpUser: user || 'NOT_SET',
       smtpPassConfigured: passLen > 0,
       smtpPassLength: passLen,
-      smtpHost: 'smtp.gmail.com:587 (IPv4)',
+      smtpHost: 'smtp.gmail.com:587 (Forced IPv4)',
       adminEmail: this.getAdminEmail(),
     };
 
