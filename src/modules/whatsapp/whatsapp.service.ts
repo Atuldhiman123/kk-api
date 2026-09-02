@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import dayjs from 'dayjs';
 
@@ -15,6 +15,87 @@ export class WhatsappService {
 
   private getApiKey(): string | undefined {
     return this.configService.get<string>('CALLMEBOT_API_KEY')?.trim();
+  }
+
+  /**
+   * Send WhatsApp message via Meta Cloud API (Graph API)
+   */
+  async sendMetaWhatsAppMessage(to: string, text: string): Promise<boolean> {
+    const token = this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
+    const phoneId = this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID');
+
+    if (!token || !phoneId) {
+      this.logger.debug(
+        `Meta WhatsApp credentials not fully set (WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID missing). Message to ${to}: ${text}`,
+      );
+      return false;
+    }
+
+    try {
+      const formattedTo = to.replace(/[^0-9]/g, '');
+      const res = await fetch(`https://graph.facebook.com/v22.0/${phoneId}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: formattedTo,
+          type: 'text',
+          text: { body: text },
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        this.logger.error(`Meta Graph API error: ${JSON.stringify(errorData)}`);
+        return false;
+      }
+
+      this.logger.log(`WhatsApp message sent successfully via Meta Graph API to ${to}`);
+      return true;
+    } catch (err: any) {
+      this.logger.error(`Failed to send WhatsApp message via Meta API: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Handle incoming messages from customers via Meta Webhook
+   */
+  async handleIncomingMessage(from: string, text: string): Promise<void> {
+    const lowerText = (text || '').toLowerCase().trim();
+
+    let replyText =
+      `🙏 *नमस्कार! Kundli Kendra में आपका स्वागत है।* ✨\n\n` +
+      `आपकी ज्योतिषीय सेवा या परामर्श के लिए हमारे पोर्टल पर जाएँ:\n` +
+      `👉 https://kundlikendra.netlify.app\n\n` +
+      `💰 सेवा शुल्क व मूल्य सूची देखने के लिए *PRICE* लिखकर भेजें।\n` +
+      `📞 सीधे संपर्क के लिए: +91 93171 17001`;
+
+    if (
+      lowerText.includes('price') ||
+      lowerText.includes('rate') ||
+      lowerText.includes('cost') ||
+      lowerText.includes('fees') ||
+      lowerText.includes('charges') ||
+      lowerText.includes('रेट') ||
+      lowerText.includes('फीस')
+    ) {
+      replyText =
+        `✨ *Kundli Kendra - सेवाएं और शुल्क सूची* ✨\n\n` +
+        `1️⃣ *कुंडली मिलान (Kundli Matching):* ₹500\n` +
+        `2️⃣ *विस्तृत कुंडली विश्लेषण (Horoscope Analysis):* ₹1100\n` +
+        `3️⃣ *लाइव ज्योतिष परामर्श (30 Min Live Consultation):* ₹2100\n` +
+        `4️⃣ *रत्न परामर्श एवं वैदिक उपाय (Gemstone Advice):* ₹750\n\n` +
+        `📅 अभी स्लॉट बुक करें:\n` +
+        `👉 https://kundlikendra.netlify.app\n\n` +
+        `धन्यवाद! 🙏`;
+    }
+
+    await this.sendMetaWhatsAppMessage(from, replyText);
   }
 
   /**
@@ -47,9 +128,13 @@ export class WhatsappService {
       `💰 *राशि:* ₹${booking.amount} (${booking.paymentStatus || 'Pending'})\n` +
       `🆔 *ID:* ${booking.id}`;
 
+    // Try Meta Graph API first if configured, else CallMeBot
+    const metaSent = await this.sendMetaWhatsAppMessage(phone, messageText);
+    if (metaSent) return true;
+
     if (!apiKey) {
       this.logger.warn(
-        `[WhatsApp Alert Simulation] CALLMEBOT_API_KEY not configured in .env. Message content:\n${messageText}`,
+        `[WhatsApp Alert Simulation] CALLMEBOT_API_KEY / META credentials not configured. Message content:\n${messageText}`,
       );
       return false;
     }
