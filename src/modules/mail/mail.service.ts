@@ -38,19 +38,18 @@ export class MailService {
 
     const hostIp = await this.getIPv4Host();
 
-    // Direct IPv4 transport with SNI (Fixes Render IPv6 ENETUNREACH 100%)
     this.transporter = nodemailer.createTransport({
       host: hostIp,
       port: 587,
-      secure: false, // STARTTLS
+      secure: false,
       auth: { user, pass },
       tls: {
         rejectUnauthorized: false,
-        servername: 'smtp.gmail.com', // SNI domain for TLS certificate validation
+        servername: 'smtp.gmail.com',
       },
-      connectionTimeout: 15000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
+      connectionTimeout: 10000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000,
     });
 
     return this.transporter;
@@ -74,27 +73,85 @@ export class MailService {
   }
 
   /**
-   * Diagnostic test email endpoint to test live SMTP on Render
+   * Sends email via HTTPS Resend API (Works 100% on Render Free Tier without SMTP blocks)
+   */
+  private async sendViaResend(options: { to: string; subject: string; html: string }): Promise<boolean> {
+    const apiKey = this.configService.get<string>('RESEND_API_KEY')?.trim();
+    if (!apiKey) return false;
+
+    try {
+      const fromEmail = this.configService.get<string>('RESEND_FROM') || 'Kundli Kendra <onboarding@resend.dev>';
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [options.to],
+          subject: options.subject,
+          html: options.html,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data?.id) {
+        this.logger.log(`Email successfully delivered via Resend API to ${options.to}: ${data.id}`);
+        return true;
+      } else {
+        this.logger.error(`Resend API error: ${JSON.stringify(data)}`);
+        return false;
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to send via Resend API: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Diagnostic test email endpoint to test live email on Render
    */
   async sendDirectTestEmail(toEmail: string): Promise<{ success: boolean; messageId?: string; error?: string; config: any }> {
-    const transporter = await this.getTransporter();
-
+    const resendKey = this.configService.get<string>('RESEND_API_KEY');
     const user = this.configService.get<string>('SMTP_USER');
     const rawPass = this.configService.get<string>('SMTP_PASS') || '';
     const passLen = rawPass.trim().length;
 
     const configSummary = {
+      resendConfigured: Boolean(resendKey),
       smtpUser: user || 'NOT_SET',
       smtpPassConfigured: passLen > 0,
-      smtpPassLength: passLen,
-      smtpHostIp: this.cachedIpv4Host,
       adminEmail: this.getAdminEmail(),
     };
 
+    const testHtml = `
+      <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fed7aa; border-radius: 12px; background: #fffaf5;">
+        <h2 style="color: #ea580c;">🕉️ Kundli Kendra Email System Test</h2>
+        <p>Congratulations! Your email system is working smoothly.</p>
+        <p><strong>Recipient:</strong> ${toEmail}</p>
+        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+      </div>
+    `;
+
+    // 1. Try Resend HTTPS API first if key exists
+    if (resendKey) {
+      const resendSent = await this.sendViaResend({
+        to: toEmail,
+        subject: '🧪 Kundli Kendra - Live Test Email (Resend HTTPS)',
+        html: testHtml,
+      });
+      if (resendSent) {
+        return { success: true, messageId: 'DELIVERED_VIA_RESEND_HTTPS', config: configSummary };
+      }
+    }
+
+    // 2. Fallback to SMTP
+    const transporter = await this.getTransporter();
     if (!transporter) {
       return {
         success: false,
-        error: 'Transporter is null because SMTP_USER or SMTP_PASS is missing in server environment.',
+        error: 'SMTP credentials missing and RESEND_API_KEY not configured.',
         config: configSummary,
       };
     }
@@ -104,14 +161,7 @@ export class MailService {
         from: this.getFromHeader(),
         to: toEmail,
         subject: '🧪 Kundli Kendra - SMTP Live Test Email',
-        html: `
-          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fed7aa; border-radius: 12px; background: #fffaf5;">
-            <h2 style="color: #ea580c;">🕉️ Kundli Kendra Email System Test</h2>
-            <p>Congratulations! Your backend email notification system is working perfectly on Render (Direct IPv4 STARTTLS).</p>
-            <p><strong>Recipient:</strong> ${toEmail}</p>
-            <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-          </div>
-        `,
+        html: testHtml,
       });
 
       this.logger.log(`Test email successfully sent to ${toEmail}: ${info.messageId}`);
@@ -330,8 +380,12 @@ export class MailService {
   }
 
   private async sendMail(options: { to: string; subject: string; html: string }) {
-    const transporter = await this.getTransporter();
+    // 1. Try Resend HTTPS API first if configured
+    const resendSent = await this.sendViaResend(options);
+    if (resendSent) return;
 
+    // 2. Fallback to SMTP
+    const transporter = await this.getTransporter();
     if (!transporter) {
       this.logger.log(
         `[Mail Simulation] To: ${options.to} | Subject: ${options.subject}`,
