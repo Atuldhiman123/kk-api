@@ -25,9 +25,6 @@ export class WhatsappService {
     const phoneId = this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID');
 
     if (!token || !phoneId) {
-      this.logger.debug(
-        `Meta WhatsApp credentials not fully set (WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID missing). Message to ${to}: ${text}`,
-      );
       return false;
     }
 
@@ -107,26 +104,41 @@ export class WhatsappService {
 
     const consultationTitle =
       booking.category?.name ||
-      (booking.comboOffer ? `${booking.comboOffer.name} (Combo)` : 'Astro Consultation');
+      (booking.comboOffer ? `${booking.comboOffer.name} (Combo Offer)` : 'Astro Consultation');
 
     const formattedDate = dayjs(booking.bookingDate).format('DD MMM YYYY');
     const formattedDob = booking.birthProfile?.dob
       ? dayjs(booking.birthProfile.dob).format('DD MMM YYYY')
       : '-';
 
+    const customerPhone = booking.user?.phone || 'N/A';
+    const cleanCustomerPhone = customerPhone.replace(/[^0-9]/g, '');
+    const birthTime = booking.birthProfile?.timeOfBirth || 'उपलब्ध नहीं';
+    const birthPlace = booking.birthProfile?.birthPlace || 'N/A';
+    const profileName = booking.birthProfile?.profileName || booking.user?.name || '-';
+    const paymentStatus = booking.paymentStatus || 'Paid';
+
     const messageText =
-      `🔔 *नई बुकिंग अलर्ट (Kundli Kendra)*\n\n` +
+      `🌟 *नई परामर्श बुकिंग (Kundli Kendra)* 🌟\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
       `👤 *ग्राहक:* ${booking.user?.name || 'N/A'}\n` +
-      `📞 *फ़ोन:* ${booking.user?.phone || 'N/A'}\n` +
-      `📧 *ईमेल:* ${booking.user?.email || 'N/A'}\n` +
+      `📞 *फ़ोन:* ${customerPhone}\n` +
+      `📧 *ईमेल:* ${booking.user?.email || 'N/A'}\n\n` +
       `✨ *परामर्श:* ${consultationTitle}\n` +
       `📅 *दिनांक:* ${formattedDate}\n` +
-      `⏰ *समय (स्लॉट):* ${booking.slotTime}\n` +
+      `⏰ *समय (स्लॉट):* ${booking.slotTime}\n\n` +
+      `🕉️ *कुंडली विवरण:*\n` +
+      `🏷️ *नाम:* ${profileName}\n` +
       `🎂 *जन्म तिथि:* ${formattedDob}\n` +
-      `🕒 *जन्म समय:* ${booking.birthProfile?.timeOfBirth || 'N/A'}\n` +
-      `📍 *जन्म स्थान:* ${booking.birthProfile?.birthPlace || 'N/A'}\n` +
-      `💰 *राशि:* ₹${booking.amount} (${booking.paymentStatus || 'Pending'})\n` +
-      `🆔 *ID:* ${booking.id}`;
+      `🕒 *जन्म समय:* ${birthTime}\n` +
+      `📍 *जन्म स्थान:* ${birthPlace}\n\n` +
+      `💳 *भुगतान स्थिति:*\n` +
+      `💰 *राशि:* ₹${booking.amount} (${paymentStatus} ✅)\n` +
+      `🆔 *Booking ID:* ${booking.id}\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      (cleanCustomerPhone
+        ? `💬 *ग्राहक से चैट करें:*\nhttps://wa.me/91${cleanCustomerPhone}`
+        : '');
 
     // Try Meta Graph API first if configured, else CallMeBot
     const metaSent = await this.sendMetaWhatsAppMessage(phone, messageText);
