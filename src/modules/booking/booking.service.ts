@@ -1,4 +1,4 @@
-﻿import {
+import {
   BadRequestException,
   ConflictException,
   Injectable,
@@ -159,11 +159,6 @@ export class BookingService {
 
         const fullBooking = await this.findById(booking.id);
 
-        // Async dispatch confirmation email & WhatsApp alert
-        this.mailService.sendBookingConfirmation(fullBooking).catch(() => {});
-        this.mailService.sendAdminBookingAlert(fullBooking).catch(() => {});
-        this.whatsappService.sendAdminBookingAlert(fullBooking).catch(() => {});
-
         return {
           ...fullBooking,
           razorpayOrder: {
@@ -248,6 +243,7 @@ export class BookingService {
 
     // Notify user & admin of verified payment & confirmed booking (Email + WhatsApp)
     const confirmedBooking = await this.findById(bookingId);
+    this.mailService.sendBookingConfirmation(confirmedBooking).catch(() => {});
     this.mailService.sendPaymentSuccessNotification(confirmedBooking).catch(() => {});
     this.mailService.sendAdminBookingAlert(confirmedBooking).catch(() => {});
     this.whatsappService.sendAdminBookingAlert(confirmedBooking).catch(() => {});
