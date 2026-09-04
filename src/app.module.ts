@@ -17,6 +17,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { MailModule } from './modules/mail/mail.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { AstrologyModule } from './modules/astrology/astrology.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     AdminModule,
     MailModule,
     WhatsappModule,
+    AstrologyModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

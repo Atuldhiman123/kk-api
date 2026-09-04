@@ -204,3 +204,29 @@ model Admin {
 
   @@map("admins")
 }
+
+model AstrologyKnowledge {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  category  String   @default("general")
+  source    String?
+  metadata  Json?
+  embedding Unsupported("vector(1536)")?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@map("astrology_knowledge")
+}
+
+model AstrologyChartCache {
+  id        String   @id @default(uuid())
+  cacheKey  String   @unique @map("cache_key")
+  chartData Json     @map("chart_data")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([cacheKey])
+  @@map("astrology_chart_cache")
+}
