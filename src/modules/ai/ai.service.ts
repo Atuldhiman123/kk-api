@@ -102,7 +102,7 @@ export class AiService {
     }
 
     const primaryModel =
-      this.configService.get<string>('AI_MODEL')?.trim() || 'gemini-2.0-flash';
+      this.configService.get<string>('AI_MODEL')?.trim() || 'gemini-3.5-flash-lite';
     const rawBaseUrl =
       this.configService.get<string>('AI_BASE_URL')?.trim() ||
       'https://generativelanguage.googleapis.com/v1beta/openai';
@@ -112,6 +112,9 @@ export class AiService {
 
     const allModels = [
       primaryModel,
+      'gemini-3.5-flash-lite',
+      'gemini-3.6-flash',
+      'gemini-3.7-flash',
       'gemini-2.0-flash',
       'gemini-1.5-flash',
       'gemini-2.5-flash',
