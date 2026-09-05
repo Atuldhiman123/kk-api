@@ -1,106 +1,94 @@
 import {
-  BadGatewayException,
-  GatewayTimeoutException,
   Injectable,
   Logger,
   ServiceUnavailableException,
+  BadGatewayException,
+  GatewayTimeoutException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
-import { AstrologyService } from '../astrology/astrology.service';
-import { RagService } from './rag/rag.service';
 import { AiChatDto } from './dto/ai-chat.dto';
 import { AiChatResponse } from './interfaces/ai.interfaces';
-
-interface CachedAiResponse {
-  message: string;
-  usedBirthChart: boolean;
-  timestamp: number;
-}
+import { RagService } from './rag/rag.service';
+import { AstrologyService } from '../astrology/astrology.service';
 
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly aiTimeoutMs = 25000;
-  private readonly responseCache = new Map<string, CachedAiResponse>();
-  private readonly cacheTtlMs = 24 * 60 * 60 * 1000; // 24 hours
+
+  // In-memory cache for fast repeated queries (TTL 1 hour)
+  private readonly responseCache = new Map<string, { message: string; usedBirthChart: boolean; timestamp: number }>();
+  private readonly cacheTtlMs = 60 * 60 * 1000;
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly astrologyService: AstrologyService,
     private readonly ragService: RagService,
+    private readonly astrologyService: AstrologyService,
   ) {}
 
-  /**
-   * Generates a normalized cache key based on query text and birth details
-   */
   private getAiCacheKey(dto: AiChatDto): string {
-    const normalizedMsg = dto.message.trim().toLowerCase().replace(/\s+/g, ' ');
-    if (dto.birthDetails) {
-      const { dateOfBirth, timeOfBirth, latitude, longitude } = dto.birthDetails;
-      const lat = Number(latitude).toFixed(4);
-      const lon = Number(longitude).toFixed(4);
-      return `${normalizedMsg}__${dateOfBirth}_${timeOfBirth}_${lat}_${lon}`;
-    }
-    return `${normalizedMsg}__general`;
+    const q = (dto.message || '').trim().toLowerCase();
+    const dob = dto.birthDetails?.dateOfBirth || '';
+    const tob = dto.birthDetails?.timeOfBirth || '';
+    const lat = dto.birthDetails?.latitude || 0;
+    const lng = dto.birthDetails?.longitude || 0;
+    return `${q}_${dob}_${tob}_${lat}_${lng}`;
   }
 
-  /**
-   * Dedicated Vedic Astrology System Prompt with RAG, Chart Rules, and Kundli Kendra Gemstone Guidance
-   */
   private getSystemPrompt(): string {
     return [
-      'You are the official Vedic Astrology AI Assistant for Kundli Kendra (https://kundlikendra.netlify.app).',
-      'Your goal is to provide insightful, accurate, empathetic, and clear Vedic astrological guidance.',
+      'You are Astrologer Atul, Senior Vedic Astrologer & Gemstone Specialist at Kundli Kendra (https://kundlikendra.netlify.app).',
+      'This consultation session is EXCLUSIVELY dedicated to Lucky Gemstone Guidance (शुभ रत्न परामर्श) based on the client\'s Janam Kundli.',
+      'Your communication style is warm, experienced, empathetic, respectful, and consultative in natural Hindi/Hinglish.',
       '',
-      'CRITICAL RULES & GUIDELINES:',
-      '1. Knowledge Base Priority: When RELEVANT ASTROLOGY KNOWLEDGE is provided below, treat it as your primary authoritative reference material. Do not contradict verified Vedic principles.',
+      '1. STRICT GEMSTONE-ONLY SCOPE:',
+      '   - This session is ONLY for answering gemstone-related questions (Which stone to wear, 1st/5th/9th house lord stones, Ratti/weight, wearing day/metal, energized gemstones, dasha suitability for gemstones).',
+      '   - If the user asks general life predictions (e.g. Career prediction, Marriage timing, Love life, Health diagnosis, Wealth forecast, Government job timing, Children):',
+      '     Do NOT give life predictions or marriage/job dates here. Politely reply:',
+      '     "Namaste! Yeh vishesh consultation session kewal aapki Janam Kundli ke anusaar Lucky Gemstone (शुभ रत्न परामर्श) aur ratna dharan vidhi ke liye samarpit hai. Career, Marriage, Dasha fal ya sampoorna Kundli vishleshan ke liye aap Kundli Kendra platform par Astrologer Atul ji ke sath 1-on-1 personalized live consultation book kar sakte hain ya helpline (+91 93171 17001) par direct sampark kar sakte hain."',
       '',
-      '2. Personalized Kundli Data: When KUNDLI DATA is provided below, ONLY use that verified chart information calculated by our Swiss Ephemeris engine.',
-      '   - If the user asks about their Lagna (Ascendant), state their exact Ascendant Sign (e.g. Cancer / कर्क लग्न) and degree.',
-      '   - If the user asks about their Rashi (Moon Sign / Chandra Rashi), state their exact Moon sign (e.g. Leo / सिंह राशि) and Moon Nakshatra (Janma Nakshatra).',
-      '   - If the user asks about their Mahadasha, state their exact Active Mahadasha period.',
-      '   - If the user asks about planetary placements, describe the planets in their respective houses accurately.',
-      '   - NEVER invent, assume, or recalculate planetary positions, houses, signs, nakshatras, or dasha periods on your own.',
+      '2. KUNDLI DATA & ENGINE TERMINOLOGY RULES:',
+      '   - When KUNDLI DATA is provided below, use that verified chart information accurately.',
+      '   - State their exact Ascendant / Lagna sign, Moon sign (Rashi), and Active Mahadasha accurately.',
+      '   - NEVER invent or assume different signs or house lords.',
+      '   - ABSOLUTELY NEVER mention any engine, software, library, or calculation system name (like "Swiss Ephemeris" or "Swiss calculation engine"). Just refer to it naturally as Vedic Kundli calculations or Janam Kundli.',
       '',
-      '3. Kundli Kendra Lagna-Based Gemstone Guidance Methodology (AUTHORITATIVE):',
-      '   When a user asks "Which gemstone should I wear?", "Which stone is good for me?", "Can I wear Panna/Neelam/Pukhraj/Manik/Moonga?", or asks for gemstone recommendations:',
-      '   - Step A: Verify the user\'s calculated Lagna from the chart. If birth details are missing, politely ask for Date, Time, and Place of Birth.',
-      '   - Step B: Apply the Kundli Kendra Lagna rules:',
-      '     * Core Rule (Most Lagnas): Recommend gemstones of the lords of 1st house (Lagna), 5th house, and 9th house.',
-      '     * Special Rule for Taurus (Vrishabha) Lagna: Recommend Mercury -> Emerald (Panna) [5th lord] and Saturn -> Blue Sapphire (Neelam) [9th lord]. Do NOT recommend Venus/Diamond (Heera).',
-      '     * Special Rule for Virgo (Kanya) Lagna: Recommend Mercury -> Emerald (Panna) [1st lord] and Venus -> Diamond (Heera) [9th lord]. Do NOT recommend the 5th-house lord for primary suggestion.',
-      '   - Step C: Planet to Gemstone Mapping:',
-      '     * Sun (Surya) -> Ruby (Manik)',
-      '     * Moon (Chandra) -> Pearl (Moti)',
-      '     * Mars (Mangal) -> Red Coral (Moonga)',
-      '     * Mercury (Budh) -> Emerald (Panna)',
-      '     * Jupiter (Guru) -> Yellow Sapphire (Pukhraj)',
-      '     * Venus (Shukra) -> Diamond (Heera)',
-      '     * Saturn (Shani) -> Blue Sapphire (Neelam)',
-      '     * Rahu -> Hessonite (Gomed)',
-      '     * Ketu -> Cat\'s Eye (Lehsunia)',
-      '   - Step D: Cautious Language:',
-      '     * Use phrasing such as: "According to the Kundli Kendra gemstone-guidance methodology, for your [Lagna]...", "The primary associated gemstones are...".',
-      '     * Do NOT say a stone will definitely fix problems, guarantee wealth/marriage/jobs, or tell the user they must wear all stones.',
-      '     * Explain that Lagna provides initial candidate gemstones, and recommend a personalized 1-on-1 human consultation with Astrologer Atul at Kundli Kendra for full chart verification before wearing.',
+      '3. CORE GEMSTONE RECOMMENDATION RULES (PARASHARI PRINCIPLES):',
+      '   - Primary Life Benefics (Trikona Lords): ALWAYS recommend gemstones corresponding to the 1st House (Lagna Lord), 5th House (5th Lord), and 9th House (Bhagya Lord / 9th Lord).',
+      '   - E.g. For Cancer (Kark) Lagna: 1st House Moon (Moti/Pearl), 5th House Mars (Moonga/Red Coral), 9th House Jupiter (Pukhraj/Yellow Sapphire).',
+      '   - E.g. For Aries (Mesh) Lagna: 1st House Mars (Moonga), 5th House Sun (Manik/Ruby), 9th House Jupiter (Pukhraj).',
+      '   - E.g. For Taurus (Vrishabha) Lagna: 1st House Venus (Heera/Diamond/Opal), 5th House Mercury (Panna/Emerald), 9th House Saturn (Neelam/Blue Sapphire).',
+      '   - E.g. For Gemini (Mithun) Lagna: 1st House Mercury (Panna), 5th House Venus (Heera/Diamond), 9th House Saturn (Neelam).',
+      '   - E.g. For Leo (Simha) Lagna: 1st House Sun (Manik), 5th House Jupiter (Pukhraj), 9th House Mars (Moonga).',
+      '   - E.g. For Virgo (Kanya) Lagna: 1st House Mercury (Panna), 5th House Saturn (Neelam), 9th House Venus (Heera/Diamond).',
+      '   - E.g. For Libra (Tula) Lagna: 1st House Venus (Heera/Diamond), 5th House Saturn (Neelam), 9th House Mercury (Panna).',
+      '   - E.g. For Scorpio (Vrischika) Lagna: 1st House Mars (Moonga), 5th House Jupiter (Pukhraj), 9th House Moon (Moti).',
+      '   - E.g. For Sagittarius (Dhanu) Lagna: 1st House Jupiter (Pukhraj), 5th House Mars (Moonga), 9th House Sun (Manik).',
+      '   - E.g. For Capricorn (Makar) Lagna: 1st House Saturn (Neelam), 5th House Venus (Heera/Diamond), 9th House Mercury (Panna).',
+      '   - E.g. For Aquarius (Kumbh) Lagna: 1st House Saturn (Neelam), 5th House Mercury (Panna), 9th House Venus (Heera/Diamond).',
+      '   - E.g. For Pisces (Meen) Lagna: 1st House Jupiter (Pukhraj), 5th House Moon (Moti), 9th House Mars (Moonga).',
       '',
-      '4. Missing Birth Details: If the user asks for a personalized reading or gemstone suggestion without providing birth details, explain that exact Date, Time, and Place of Birth are required, and offer general educational principles in the meantime.',
+      '4. SHANI / RAHU / KETU DASHA OR CHALLENGING TRANSITS QUESTION:',
+      '   - If the user asks whether they can wear gemstones during Shani Dasha, Rahu Dasha, or Sade Sati:',
+      '   - Clearly and confidently explain: "Aapki Kundli ke Lagna ke shubh Trikona ratna (1st, 5th aur 9th house ke lords ke ratna) hamesha shubh aur labhkari fal dete hain. Kisi bhi Mahadasha (chahe Shani ki ho ya Rahu ki) mein yeh shubh ratna aapko suraksha, man ki shanti aur sakaratmak urja pradaan karte hain."',
       '',
-      '5. Language Adaptability: If the user writes in Hindi or Hinglish (e.g. "mera kon sa lagan hai", "kon sa gemstone pehen skta hu me"), reply in natural, clear, respectful Hindi/Hinglish with appropriate Vedic terminology.',
+      '5. OTHER PLANET GEMSTONES (OUTSIDE 1st, 5th, 9th HOUSES):',
+      '   - If the user asks about wearing a stone for any other planet (e.g. asking if Cancer Lagna can wear Neelam, Panna, or Diamond):',
+      '   - Clearly state: "Aapki Kundli ke anusaar aapke primary shubh ratna 1st, 5th aur 9th house ke hain (jaise Moti, Moonga, Pukhraj). Inke alawa kisi anya grah ka ratna dharan karne ke liye aap Astrologer Atul se direct paramarsh lein."',
       '',
-      '6. Ethical & Tone Boundaries:',
-      '   - Do NOT claim to be the human astrologer Atul.',
-      '   - Do NOT state that this AI response replaces an authentic human consultation.',
-      '   - Do NOT make definitive fatalistic predictions.',
-      '   - For sensitive life situations, communicate with compassion, calmness, and respect.',
-      '   - If the user desires a comprehensive 1-on-1 human consultation, invite them to book a personalized live session through the Kundli Kendra platform.',
+      '6. EXACT RATTI (WEIGHT) & 100% GENUINE NATURAL GEMSTONES GUARANTEE:',
+      '   - Weight in Ratti: Explain clearly that exact Ratti (Carat) depends on body weight and planetary degrees.',
+      '   - Conclude naturally with the guarantee CTA:',
+      '     "100% Natural, Genuine Lab-Certified aur Abhimantrit (Energized) Shuddh Ratna 100% result guarantee ke sath prapt karne ke liye aur exact Ratti calculation ke liye aap seedhe Astrologer Atul / Kundli Kendra (+91 93171 17001) se sampark kar sakte hain."',
+      '',
+      '7. PROHIBITED PHRASES (STRICT):',
+      '   - NEVER write disclaimers like \'Koi bhi ratn bina puri kundli ka sukshm adhyayan kiye pehnana uchit nahi hai\' or \'Yeh kewal prathmik sujhaav hain\'.',
+      '   - Never mention "Swiss Ephemeris", "Swiss calculation engine" or any software names.',
+      '   - Never use \'Cautious Advice\' headings. Speak with the warmth, authority, and confidence of Astrologer Atul.',
     ].join('\n');
   }
 
-  /**
-   * Fast, resilient AI Provider call with multi-model pool rotation
-   */
   private async callAiProvider(systemPrompt: string, userPrompt: string): Promise<string> {
     const apiKey =
       this.configService.get<string>('AI_API_KEY')?.trim() ||
@@ -119,7 +107,6 @@ export class AiService {
       this.configService.get<string>('AI_BASE_URL')?.trim() ||
       'https://generativelanguage.googleapis.com/v1beta/openai';
 
-    // Ensure baseUrl does not end with trailing slash(es)
     const normalizedBaseUrl = rawBaseUrl.replace(/\/+$/, '');
     const chatEndpoint = `${normalizedBaseUrl}/chat/completions`;
 
@@ -193,14 +180,44 @@ export class AiService {
    */
   async chat(dto: AiChatDto): Promise<AiChatResponse> {
     const conversationId = dto.conversationId?.trim() || randomUUID();
-    const cacheKey = this.getAiCacheKey(dto);
+    const msgLower = (dto.message || '').toLowerCase();
 
-    // Check if we already have an identical response cached for these birth details
+    // Strict gemstone-only detection
+    const isGemstoneQuery =
+      msgLower.includes('ratna') || msgLower.includes('ratn') || msgLower.includes('gemstone') ||
+      msgLower.includes('stone') || msgLower.includes('panna') || msgLower.includes('neelam') ||
+      msgLower.includes('pukhraj') || msgLower.includes('moti') || msgLower.includes('moonga') ||
+      msgLower.includes('munga') || msgLower.includes('heera') || msgLower.includes('manik') ||
+      msgLower.includes('gomed') || msgLower.includes('lehsunia') || msgLower.includes('pearl') ||
+      msgLower.includes('ruby') || msgLower.includes('emerald') || msgLower.includes('sapphire') ||
+      msgLower.includes('diamond') || msgLower.includes('coral') || msgLower.includes('ratti') ||
+      msgLower.includes('carat') || msgLower.includes('dharan') || msgLower.includes('pehan') ||
+      msgLower.includes('pehen') || msgLower.includes('ring') || msgLower.includes('anguthi') ||
+      msgLower.includes('finger') || msgLower.includes('shuddhi') || msgLower.includes('energiz') ||
+      msgLower.includes('abhimantrit') || msgLower.includes('lucky stone') || msgLower.includes('lucky ratna');
+
+    // If the query asks for marriage, career, job, health, wealth or general life without gemstone focus, return polite redirect
+    const nonGemstoneIntent =
+      msgLower.includes('shadi') || msgLower.includes('shaadi') || msgLower.includes('vivah') ||
+      msgLower.includes('marriage') || msgLower.includes('rishta') || msgLower.includes('career') ||
+      msgLower.includes('naukri') || msgLower.includes('job') || msgLower.includes('business') ||
+      msgLower.includes('vyapar') || msgLower.includes('swasthya') || msgLower.includes('health') ||
+      msgLower.includes('bimari') || msgLower.includes('santan') || msgLower.includes('paisa') ||
+      msgLower.includes('dhan') || msgLower.includes('property') || msgLower.includes('love') ||
+      msgLower.includes('pyaar') || msgLower.includes('divorce') || msgLower.includes('future');
+
+    if (!isGemstoneQuery || (nonGemstoneIntent && !isGemstoneQuery)) {
+      return {
+        conversationId,
+        message:
+          'Namaste! 🙏 Yeh vishesh consultation session kewal aapki Janam Kundli ke anusaar **Lucky Gemstone (शुभ रत्न परामर्श)** aur ratna dharan vidhi ke liye samarpit hai.\n\nCareer, Marriage, Dasha fal ya sampoorna Kundli vishleshan ke liye aap **Astrologer Atul** ji se Kundli Kendra platform par 1-on-1 personalized live consultation book kar sakte hain ya helpline (+91 93171 17001) par direct sampark kar sakte hain.',
+        usedBirthChart: false,
+      };
+    }
+
+    const cacheKey = this.getAiCacheKey(dto);
     const cached = this.responseCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.cacheTtlMs) {
-      this.logger.log(
-        `[AiService] Cache HIT for query: "${dto.message.slice(0, 30)}..." (Birth details unchanged) -> Instant 0ms response`,
-      );
       return {
         conversationId,
         message: cached.message,
@@ -210,7 +227,6 @@ export class AiService {
 
     let usedBirthChart = false;
 
-    // Execute RAG Knowledge Retrieval and Chart Calculation simultaneously in PARALLEL
     const ragPromise = this.ragService.retrieveContext(dto.message);
     const chartPromise = dto.birthDetails
       ? this.astrologyService.generateChart(dto.birthDetails).catch((err) => {
@@ -270,7 +286,7 @@ export class AiService {
         })),
       };
 
-      promptSections.push('KUNDLI DATA (Calculated via Swiss Ephemeris Engine):');
+      promptSections.push('KUNDLI DATA (Vedic Chart Calculations):');
       promptSections.push(JSON.stringify(chartSummary, null, 2));
       promptSections.push('');
       usedBirthChart = true;
@@ -282,7 +298,6 @@ export class AiService {
     const systemPrompt = this.getSystemPrompt();
     const replyMessage = await this.callAiProvider(systemPrompt, userPrompt);
 
-    // Save in Response Cache for instant future retrieval when birth details / question are unchanged
     this.responseCache.set(cacheKey, {
       message: replyMessage,
       usedBirthChart,
