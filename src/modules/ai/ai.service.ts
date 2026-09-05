@@ -25,7 +25,7 @@ export class AiService {
     private readonly configService: ConfigService,
     private readonly ragService: RagService,
     private readonly astrologyService: AstrologyService,
-  ) {}
+  ) { }
 
   private getAiCacheKey(dto: AiChatDto): string {
     const q = (dto.message || '').trim().toLowerCase();
@@ -230,9 +230,9 @@ export class AiService {
     const ragPromise = this.ragService.retrieveContext(dto.message);
     const chartPromise = dto.birthDetails
       ? this.astrologyService.generateChart(dto.birthDetails).catch((err) => {
-          this.logger.warn(`Could not calculate chart for AI context: ${err.message}`);
-          return null;
-        })
+        this.logger.warn(`Could not calculate chart for AI context: ${err.message}`);
+        return null;
+      })
       : Promise.resolve(null);
 
     const [ragResult, chart] = await Promise.all([ragPromise, chartPromise]);

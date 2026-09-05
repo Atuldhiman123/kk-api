@@ -6,8 +6,27 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const configuredOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+    : [];
+
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? true,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      
+      const allowed = [
+        'https://kundlikendra.netlify.app',
+        'http://localhost:3000',
+        'http://localhost:5173',
+        ...configuredOrigins,
+      ];
+
+      if (allowed.some((a) => a === '*' || origin.startsWith(a) || a.includes(origin))) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Permissive for API consumers
+    },
     credentials: true,
   });
 

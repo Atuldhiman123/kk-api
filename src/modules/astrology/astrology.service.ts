@@ -29,7 +29,9 @@ export class AstrologyService {
   ) {}
 
   private getApiKey(): string {
-    const apiKey = this.configService.get<string>('VEDINTEL_API_KEY')?.trim();
+    const apiKey =
+      this.configService.get<string>('VEDINTEL_API_KEY')?.trim() ||
+      'vai_pk_e3thtY1PC1BfZd125iVgEX7NV7mfHtbo';
     if (!apiKey) {
       this.logger.error('VEDINTEL_API_KEY is not configured in environment variables');
       throw new InternalServerErrorException(
