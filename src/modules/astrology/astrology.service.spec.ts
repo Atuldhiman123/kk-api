@@ -1,15 +1,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigModule } from '@nestjs/config';
 import { AstrologyService } from './astrology.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { GenerateChartDto } from './dto/generate-chart.dto';
 
 describe('AstrologyService', () => {
   let service: AstrologyService;
 
+  const mockPrismaService = {
+    astrologyChartCache: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
+    },
+  };
+
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true })],
-      providers: [AstrologyService],
+      providers: [
+        AstrologyService,
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
+        },
+      ],
     }).compile();
 
     service = module.get<AstrologyService>(AstrologyService);
@@ -19,7 +31,7 @@ describe('AstrologyService', () => {
     expect(service).toBeDefined();
   });
 
-  it('should successfully generate and normalize a birth chart', async () => {
+  it('should accurately calculate and normalize Vedic birth chart in-house', async () => {
     const dto: GenerateChartDto = {
       dateOfBirth: '1990-04-15',
       timeOfBirth: '08:30',
@@ -34,9 +46,13 @@ describe('AstrologyService', () => {
     expect(result.birthDetails).toEqual(dto);
     expect(result.ascendant).toBeDefined();
     expect(result.ascendant.sign).toBe('Taurus');
-    expect(result.planets.length).toBeGreaterThan(0);
+    expect(result.ascendant.signLord).toBe('Venus');
+    expect(result.planets.length).toBe(9); // Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, Ketu
     expect(result.houses.length).toBe(12);
     expect(result.dashas).toBeDefined();
-    expect(result.dashas.mahadashas.length).toBeGreaterThan(0);
-  }, 25000);
+    expect(result.dashas.mahadashas.length).toBe(9);
+    expect(result.dashas.currentMahadasha).toBeDefined();
+    expect(result.dashas.currentMahadasha?.lord).toBeDefined();
+    expect(result.dashas.antardashas?.length).toBe(9);
+  });
 });

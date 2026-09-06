@@ -1,17 +1,29 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigModule } from '@nestjs/config';
 import { AstrologyController } from './astrology.controller';
 import { AstrologyService } from './astrology.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { GenerateChartDto } from './dto/generate-chart.dto';
 
 describe('AstrologyController', () => {
   let controller: AstrologyController;
 
+  const mockPrismaService = {
+    astrologyChartCache: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
+    },
+  };
+
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true })],
       controllers: [AstrologyController],
-      providers: [AstrologyService],
+      providers: [
+        AstrologyService,
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
+        },
+      ],
     }).compile();
 
     controller = module.get<AstrologyController>(AstrologyController);
@@ -34,5 +46,5 @@ describe('AstrologyController', () => {
     expect(response).toBeDefined();
     expect(response.ascendant.sign).toBe('Taurus');
     expect(response.planets.some((p) => p.name.includes('Sun'))).toBe(true);
-  }, 25000);
+  });
 });

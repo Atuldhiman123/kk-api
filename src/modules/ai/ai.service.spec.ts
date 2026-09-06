@@ -31,8 +31,8 @@ describe('AiService', () => {
   const mockRagService = {
     retrieveContext: jest.fn().mockResolvedValue({
       hasKnowledge: true,
-      formattedContext: 'RELEVANT ASTROLOGY KNOWLEDGE BASE:\nSaturn in 7th brings maturity in marriage.',
-      chunks: [{ id: 'k1', title: 'Saturn in 7th' }],
+      formattedContext: 'RELEVANT ASTROLOGY KNOWLEDGE BASE:\nEmerald/Panna suits Mercury and Opal suits Venus.',
+      chunks: [{ id: 'k1', title: 'Gemstone Guidance' }],
     }),
   };
 
@@ -67,7 +67,7 @@ describe('AiService', () => {
         choices: [
           {
             message: {
-              content: 'According to Vedic astrology and your chart, Saturn in the 7th house brings long-lasting devotion.',
+              content: 'Aapke liye lucky gemstone Opal ya Heera shubh rahega.',
             },
           },
         ],
@@ -75,22 +75,22 @@ describe('AiService', () => {
     } as any);
   });
 
-  it('should answer general question with RAG knowledge without calling AstrologyService', async () => {
+  it('should redirect non-gemstone general question politely without calling AstrologyService or RAG', async () => {
     const dto: AiChatDto = {
-      message: 'What does 7th house mean?',
+      message: 'Meri shadi kab hogi?',
     };
 
     const res = await service.chat(dto);
 
     expect(res).toBeDefined();
     expect(res.usedBirthChart).toBe(false);
-    expect(mockRagService.retrieveContext).toHaveBeenCalledWith(dto.message);
+    expect(res.message).toContain('Lucky Gemstone');
     expect(mockAstrologyService.generateChart).not.toHaveBeenCalled();
   });
 
-  it('should answer personalized question with RAG + in-memory Kundli chart', async () => {
+  it('should answer gemstone question with RAG + in-memory Kundli chart', async () => {
     const dto: AiChatDto = {
-      message: 'What does Saturn in my 7th house mean?',
+      message: 'Meri kundli ke hisab se lucky gemstone kaunsa hai?',
       conversationId: 'custom-conv-123',
       birthDetails: {
         dateOfBirth: '1990-04-15',
@@ -110,11 +110,11 @@ describe('AiService', () => {
     expect(mockAstrologyService.generateChart).toHaveBeenCalledWith(dto.birthDetails);
   });
 
-  it('should throw ServiceUnavailableException if AI_API_KEY is missing', async () => {
+  it('should throw ServiceUnavailableException if AI_API_KEY is missing on gemstone query', async () => {
     jest.spyOn(configService, 'get').mockReturnValue(undefined);
 
     await expect(
-      service.chat({ message: 'Tell me about astrology' }),
+      service.chat({ message: 'Lucky ratna / gemstone guidance batao' }),
     ).rejects.toThrow(ServiceUnavailableException);
   });
 });
