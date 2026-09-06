@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +20,8 @@ const ACTIVE_BOOKING_STATUSES = ['Pending', 'Confirmed', 'Completed'] as const;
 
 @Injectable()
 export class BookingService {
+  private readonly logger = new Logger(BookingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly availabilityService: AvailabilityService,
@@ -188,9 +191,15 @@ export class BookingService {
     const fullBooking = await this.findById(booking.id);
 
     // Send customer confirmation & admin alert (Email + WhatsApp)
-    this.mailService.sendBookingConfirmation(fullBooking).catch(() => {});
-    this.mailService.sendAdminBookingAlert(fullBooking).catch(() => {});
-    this.whatsappService.sendAdminBookingAlert(fullBooking).catch(() => {});
+    this.mailService.sendBookingConfirmation(fullBooking).catch((err) =>
+      this.logger.error(`sendBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
+    );
+    this.mailService.sendAdminBookingAlert(fullBooking).catch((err) =>
+      this.logger.error(`sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
+    );
+    this.whatsappService.sendAdminBookingAlert(fullBooking).catch((err) =>
+      this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
+    );
 
     return fullBooking;
   }
@@ -243,10 +252,18 @@ export class BookingService {
 
     // Notify user & admin of verified payment & confirmed booking (Email + WhatsApp)
     const confirmedBooking = await this.findById(bookingId);
-    this.mailService.sendBookingConfirmation(confirmedBooking).catch(() => {});
-    this.mailService.sendPaymentSuccessNotification(confirmedBooking).catch(() => {});
-    this.mailService.sendAdminBookingAlert(confirmedBooking).catch(() => {});
-    this.whatsappService.sendAdminBookingAlert(confirmedBooking).catch(() => {});
+    this.mailService.sendBookingConfirmation(confirmedBooking).catch((err) =>
+      this.logger.error(`sendBookingConfirmation failed for booking ${bookingId}: ${err.message}`),
+    );
+    this.mailService.sendPaymentSuccessNotification(confirmedBooking).catch((err) =>
+      this.logger.error(`sendPaymentSuccessNotification failed for booking ${bookingId}: ${err.message}`),
+    );
+    this.mailService.sendAdminBookingAlert(confirmedBooking).catch((err) =>
+      this.logger.error(`sendAdminBookingAlert failed for booking ${bookingId}: ${err.message}`),
+    );
+    this.whatsappService.sendAdminBookingAlert(confirmedBooking).catch((err) =>
+      this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${bookingId}: ${err.message}`),
+    );
 
     return { success: true, message: 'Payment verified and booking confirmed' };
   }

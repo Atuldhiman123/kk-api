@@ -73,44 +73,6 @@ export class MailService {
   }
 
   /**
-   * Sends email via Brevo (Sendinblue) HTTPS API (300 Free emails/day to ANY email address)
-   */
-  private async sendViaBrevo(options: { to: string; subject: string; html: string }): Promise<boolean> {
-    const apiKey = this.configService.get<string>('BREVO_API_KEY')?.trim();
-    if (!apiKey) return false;
-
-    try {
-      const senderEmail = this.configService.get<string>('SMTP_USER') || 'kundlikendra1998@gmail.com';
-      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: {
-          'api-key': apiKey,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          sender: { name: 'Kundli Kendra', email: senderEmail },
-          to: [{ email: options.to }],
-          subject: options.subject,
-          htmlContent: options.html,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data?.messageId) {
-        this.logger.log(`Email successfully sent via Brevo to ${options.to}: ${data.messageId}`);
-        return true;
-      } else {
-        this.logger.error(`Brevo API error: ${JSON.stringify(data)}`);
-        return false;
-      }
-    } catch (err: any) {
-      this.logger.error(`Failed to send via Brevo API: ${err.message}`);
-      return false;
-    }
-  }
-
-  /**
    * Sends email via Resend HTTPS API
    */
   private async sendViaResend(options: { to: string; subject: string; html: string }): Promise<boolean> {
@@ -148,18 +110,14 @@ export class MailService {
   }
 
   /**
-   * Universal email dispatcher supporting Brevo, Resend, and Direct IPv4 SMTP
+   * Universal email dispatcher supporting Resend and Direct IPv4 SMTP
    */
   private async sendMail(options: { to: string; subject: string; html: string }) {
-    // 1. Try Brevo HTTPS API (Sends to ANY customer email + admin without domain requirement)
-    const brevoSent = await this.sendViaBrevo(options);
-    if (brevoSent) return;
-
-    // 2. Try Resend HTTPS API
+    // 1. Try Resend HTTPS API
     const resendSent = await this.sendViaResend(options);
     if (resendSent) return;
 
-    // 3. Fallback to Direct IPv4 SMTP
+    // 2. Fallback to Direct IPv4 SMTP
     const transporter = await this.getTransporter();
     if (!transporter) {
       this.logger.log(
@@ -178,80 +136,6 @@ export class MailService {
       this.logger.log(`Email successfully sent to ${options.to}: ${info.messageId}`);
     } catch (error: any) {
       this.logger.error(`Failed to send email to ${options.to}: ${error.message}`);
-    }
-  }
-
-  /**
-   * Diagnostic test email endpoint to test live email on Render
-   */
-  async sendDirectTestEmail(toEmail: string): Promise<{ success: boolean; messageId?: string; error?: string; config: any }> {
-    const brevoKey = this.configService.get<string>('BREVO_API_KEY');
-    const resendKey = this.configService.get<string>('RESEND_API_KEY');
-    const user = this.configService.get<string>('SMTP_USER');
-
-    const configSummary = {
-      brevoConfigured: Boolean(brevoKey),
-      resendConfigured: Boolean(resendKey),
-      smtpUser: user || 'NOT_SET',
-      adminEmail: this.getAdminEmail(),
-    };
-
-    const testHtml = `
-      <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fed7aa; border-radius: 12px; background: #fffaf5;">
-        <h2 style="color: #ea580c;">🕉️ Kundli Kendra Email System Test</h2>
-        <p>Congratulations! Your email system is working smoothly.</p>
-        <p><strong>Recipient:</strong> ${toEmail}</p>
-        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-      </div>
-    `;
-
-    // 1. Brevo
-    if (brevoKey) {
-      const brevoSent = await this.sendViaBrevo({
-        to: toEmail,
-        subject: '🧪 Kundli Kendra - Live Test Email (Brevo HTTPS)',
-        html: testHtml,
-      });
-      if (brevoSent) {
-        return { success: true, messageId: 'DELIVERED_VIA_BREVO_HTTPS', config: configSummary };
-      }
-    }
-
-    // 2. Resend
-    if (resendKey) {
-      const resendSent = await this.sendViaResend({
-        to: toEmail,
-        subject: '🧪 Kundli Kendra - Live Test Email (Resend HTTPS)',
-        html: testHtml,
-      });
-      if (resendSent) {
-        return { success: true, messageId: 'DELIVERED_VIA_RESEND_HTTPS', config: configSummary };
-      }
-    }
-
-    // 3. SMTP
-    const transporter = await this.getTransporter();
-    if (!transporter) {
-      return {
-        success: false,
-        error: 'No email service configured (BREVO_API_KEY, RESEND_API_KEY, or SMTP missing).',
-        config: configSummary,
-      };
-    }
-
-    try {
-      const info = await transporter.sendMail({
-        from: this.getFromHeader(),
-        to: toEmail,
-        subject: '🧪 Kundli Kendra - SMTP Live Test Email',
-        html: testHtml,
-      });
-
-      this.logger.log(`Test email successfully sent to ${toEmail}: ${info.messageId}`);
-      return { success: true, messageId: info.messageId, config: configSummary };
-    } catch (err: any) {
-      this.logger.error(`Test email failed to ${toEmail}: ${err.message}`);
-      return { success: false, error: err.message, config: configSummary };
     }
   }
 
