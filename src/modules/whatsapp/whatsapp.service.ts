@@ -44,6 +44,7 @@ export class WhatsappService {
       if (formattedTo.length === 10) {
         formattedTo = '91' + formattedTo;
       }
+      this.logger.log(`Dispatching WhatsApp message to ${formattedTo} using phoneId ${phoneId}...`);
       const res = await fetch(`https://graph.facebook.com/v22.0/${phoneId}/messages`, {
         method: 'POST',
         headers: {

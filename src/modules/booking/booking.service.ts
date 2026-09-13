@@ -142,6 +142,8 @@ export class BookingService {
       return created;
     });
 
+    let razorpayOrderData: any = undefined;
+
     if (paymentMethod === 'Razorpay') {
       const razorpay = new Razorpay({
         key_id: this.configService.get<string>('RAZORPAY_KEY_ID') || '',
@@ -160,16 +162,11 @@ export class BookingService {
           data: { transactionId: order.id },
         });
 
-        const fullBooking = await this.findById(booking.id);
-
-        return {
-          ...fullBooking,
-          razorpayOrder: {
-            id: order.id,
-            amount: order.amount,
-            currency: order.currency,
-            keyId: this.configService.get<string>('RAZORPAY_KEY_ID') || '',
-          },
+        razorpayOrderData = {
+          id: order.id,
+          amount: order.amount,
+          currency: order.currency,
+          keyId: this.configService.get<string>('RAZORPAY_KEY_ID') || '',
         };
       } catch (err: any) {
         await this.prisma.booking.update({
@@ -203,6 +200,13 @@ export class BookingService {
     this.whatsappService.sendCustomerBookingConfirmation(fullBooking).catch((err) =>
       this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
     );
+
+    if (razorpayOrderData) {
+      return {
+        ...fullBooking,
+        razorpayOrder: razorpayOrderData,
+      };
+    }
 
     return fullBooking;
   }
