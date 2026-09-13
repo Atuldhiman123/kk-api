@@ -187,7 +187,15 @@ export class BookingService {
 
     const fullBooking = await this.findById(booking.id);
 
-    // Send customer confirmation & admin alert (Email + WhatsApp)
+    if (razorpayOrderData) {
+      // For Razorpay, do not send confirmation yet. It will be sent in verifyPayment once payment succeeds.
+      return {
+        ...fullBooking,
+        razorpayOrder: razorpayOrderData,
+      };
+    }
+
+    // Only for non-Razorpay (offline/manual UPI) bookings:
     this.mailService.sendBookingConfirmation(fullBooking).catch((err) =>
       this.logger.error(`sendBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
     );
@@ -200,13 +208,6 @@ export class BookingService {
     this.whatsappService.sendCustomerBookingConfirmation(fullBooking).catch((err) =>
       this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
     );
-
-    if (razorpayOrderData) {
-      return {
-        ...fullBooking,
-        razorpayOrder: razorpayOrderData,
-      };
-    }
 
     return fullBooking;
   }
