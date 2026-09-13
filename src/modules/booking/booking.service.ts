@@ -200,6 +200,9 @@ export class BookingService {
     this.whatsappService.sendAdminBookingAlert(fullBooking).catch((err) =>
       this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
     );
+    this.whatsappService.sendCustomerBookingConfirmation(fullBooking).catch((err) =>
+      this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
+    );
 
     return fullBooking;
   }
@@ -263,6 +266,9 @@ export class BookingService {
     );
     this.whatsappService.sendAdminBookingAlert(confirmedBooking).catch((err) =>
       this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${bookingId}: ${err.message}`),
+    );
+    this.whatsappService.sendCustomerBookingConfirmation(confirmedBooking).catch((err) =>
+      this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${bookingId}: ${err.message}`),
     );
 
     return { success: true, message: 'Payment verified and booking confirmed' };

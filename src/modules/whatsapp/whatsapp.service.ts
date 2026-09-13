@@ -34,7 +34,10 @@ export class WhatsappService {
     }
 
     try {
-      const formattedTo = to.replace(/[^0-9]/g, '');
+      let formattedTo = to.replace(/[^0-9]/g, '');
+      if (formattedTo.length === 10) {
+        formattedTo = '91' + formattedTo;
+      }
       const res = await fetch(`https://graph.facebook.com/v22.0/${phoneId}/messages`, {
         method: 'POST',
         headers: {
@@ -220,6 +223,49 @@ export class WhatsappService {
       }
     } catch (error: any) {
       this.logger.error(`Failed to send WhatsApp alert to Admin: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Sends automated WhatsApp booking confirmation to the Client/Customer
+   */
+  async sendCustomerBookingConfirmation(booking: any): Promise<boolean> {
+    const customerPhone = booking.user?.phone;
+    if (!customerPhone) {
+      this.logger.warn(`Cannot send WhatsApp confirmation: No customer phone found for booking ${booking.id}`);
+      return false;
+    }
+
+    const consultationTitle =
+      booking.category?.name ||
+      (booking.comboOffer ? `${booking.comboOffer.name} (Combo Offer)` : 'Astro Consultation');
+
+    const formattedDate = dayjs(booking.bookingDate).format('DD MMM YYYY');
+    const customerName = booking.user?.name || booking.birthProfile?.profileName || 'प्रिय ग्राहक';
+    const profileName = booking.birthProfile?.profileName || customerName;
+
+    const messageText =
+      `🙏 *नमस्कार ${customerName} जी!* ✨\n\n` +
+      `Kundli Kendra में आपकी परामर्श बुकिंग सफलतापूर्वक दर्ज हो गई है। ✅\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `✨ *परामर्श:* ${consultationTitle}\n` +
+      `📅 *दिनांक:* ${formattedDate}\n` +
+      `⏰ *समय (स्लॉट):* ${booking.slotTime}\n` +
+      `🕉️ *नाम:* ${profileName}\n` +
+      `💰 *राशि:* ₹${booking.amount}\n` +
+      `🆔 *Booking ID:* ${booking.id}\n` +
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `📞 हमारे ज्योतिषाचार्य निर्धारित समय पर आपसे संपर्क करेंगे।\n` +
+      `किसी भी प्रश्न या सहायता के लिए WhatsApp/कॉल करें: +91 93171 17001\n\n` +
+      `धन्यवाद! 🙏\n*Kundli Kendra Team*`;
+
+    const sent = await this.sendMetaWhatsAppMessage(customerPhone, messageText);
+    if (sent) {
+      this.logger.log(`WhatsApp booking confirmation sent to client (${customerPhone}) for booking ${booking.id}`);
+      return true;
+    } else {
+      this.logger.warn(`Failed to send WhatsApp booking confirmation to client (${customerPhone})`);
       return false;
     }
   }
