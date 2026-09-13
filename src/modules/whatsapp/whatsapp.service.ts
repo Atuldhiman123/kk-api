@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../prisma/prisma.service';
 import dayjs from 'dayjs';
 
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   private getAdminPhone(): string {
     const raw = this.configService.get<string>('ADMIN_WHATSAPP_PHONE') || '919317117001';
@@ -82,15 +86,63 @@ export class WhatsappService {
       lowerText.includes('रेट') ||
       lowerText.includes('फीस')
     ) {
-      replyText =
-        `✨ *Kundli Kendra - सेवाएं और शुल्क सूची* ✨\n\n` +
-        `1️⃣ *कुंडली मिलान (Kundli Matching):* ₹500\n` +
-        `2️⃣ *विस्तृत कुंडली विश्लेषण (Horoscope Analysis):* ₹1100\n` +
-        `3️⃣ *लाइव ज्योतिष परामर्श (30 Min Live Consultation):* ₹2100\n` +
-        `4️⃣ *रत्न परामर्श एवं वैदिक उपाय (Gemstone Advice):* ₹750\n\n` +
-        `📅 अभी स्लॉट बुक करें:\n` +
-        `👉 https://kundlikendra.netlify.app\n\n` +
-        `धन्यवाद! 🙏`;
+      try {
+        const [categories, comboOffers] = await Promise.all([
+          this.prisma.consultationCategory.findMany({
+            where: { isActive: true },
+            orderBy: { price: 'asc' },
+          }),
+          this.prisma.comboOffer.findMany({
+            where: { isActive: true },
+            orderBy: { discountedPrice: 'asc' },
+          }),
+        ]);
+
+        if (categories && categories.length > 0) {
+          replyText = `✨ *Kundli Kendra - सेवाएं और शुल्क सूची* ✨\n\n`;
+
+          const numEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+
+          categories.forEach((cat, index) => {
+            const num = numEmojis[index] || `•`;
+            const duration = cat.durationMinutes ? ` (${cat.durationMinutes} मिनट)` : '';
+            replyText += `${num} *${cat.name}:* ₹${Number(cat.price)}${duration}\n`;
+          });
+
+          if (comboOffers && comboOffers.length > 0) {
+            replyText += `\n🎁 *विशेष कॉम्बो ऑफर्स (Combo Offers):*\n`;
+            comboOffers.forEach((combo) => {
+              replyText += `🏷️ *${combo.name}:* ₹${Number(combo.discountedPrice)}\n`;
+            });
+          }
+
+          replyText +=
+            `\n📅 अभी स्लॉट बुक करें:\n` +
+            `👉 https://kundlikendra.netlify.app\n\n` +
+            `धन्यवाद! 🙏`;
+        } else {
+          replyText =
+            `✨ *Kundli Kendra - सेवाएं और शुल्क सूची* ✨\n\n` +
+            `1️⃣ *कुंडली मिलान (Kundli Matching):* ₹500\n` +
+            `2️⃣ *विस्तृत कुंडली विश्लेषण (Horoscope Analysis):* ₹1100\n` +
+            `3️⃣ *लाइव ज्योतिष परामर्श (30 Min Live Consultation):* ₹2100\n` +
+            `4️⃣ *रत्न परामर्श एवं वैदिक उपाय (Gemstone Advice):* ₹750\n\n` +
+            `📅 अभी स्लॉट बुक करें:\n` +
+            `👉 https://kundlikendra.netlify.app\n\n` +
+            `धन्यवाद! 🙏`;
+        }
+      } catch (dbErr: any) {
+        this.logger.error(`Failed to fetch dynamic prices from DB: ${dbErr.message}`);
+        replyText =
+          `✨ *Kundli Kendra - सेवाएं और शुल्क सूची* ✨\n\n` +
+          `1️⃣ *कुंडली मिलान (Kundli Matching):* ₹500\n` +
+          `2️⃣ *विस्तृत कुंडली विश्लेषण (Horoscope Analysis):* ₹1100\n` +
+          `3️⃣ *लाइव ज्योतिष परामर्श (30 Min Live Consultation):* ₹2100\n` +
+          `4️⃣ *रत्न परामर्श एवं वैदिक उपाय (Gemstone Advice):* ₹750\n\n` +
+          `📅 अभी स्लॉट बुक करें:\n` +
+          `👉 https://kundlikendra.netlify.app\n\n` +
+          `धन्यवाद! 🙏`;
+      }
     }
 
     await this.sendMetaWhatsAppMessage(from, replyText, phoneId);
