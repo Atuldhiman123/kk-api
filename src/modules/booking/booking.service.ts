@@ -203,9 +203,6 @@ export class BookingService {
     this.mailService.sendBookingConfirmation(fullBooking).catch((err) =>
       this.logger.error(`sendBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
     );
-    this.whatsappService.sendAdminBookingAlert(fullBooking).catch((err) =>
-      this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
-    );
     this.whatsappService.sendCustomerBookingConfirmation(fullBooking).catch((err) =>
       this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
     );
@@ -259,22 +256,25 @@ export class BookingService {
       });
     });
 
-    // Notify user & admin of verified payment & confirmed booking (Email + WhatsApp)
+    // Notify user & admin of verified payment & confirmed booking
     const confirmedBooking = await this.findById(bookingId);
+
+    // 1. Admin Alert -> Exclusively via Email to kundlikendra1998@gmail.com
+    this.mailService.sendAdminBookingAlert(confirmedBooking).catch((err) =>
+      this.logger.error(`sendAdminBookingAlert failed for booking ${bookingId}: ${err.message}`),
+    );
+
+    // 2. Client Confirmation -> WhatsApp message
+    this.whatsappService.sendCustomerBookingConfirmation(confirmedBooking).catch((err) =>
+      this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${bookingId}: ${err.message}`),
+    );
+
+    // 3. Client Receipt -> Email
     this.mailService.sendBookingConfirmation(confirmedBooking).catch((err) =>
       this.logger.error(`sendBookingConfirmation failed for booking ${bookingId}: ${err.message}`),
     );
     this.mailService.sendPaymentSuccessNotification(confirmedBooking).catch((err) =>
       this.logger.error(`sendPaymentSuccessNotification failed for booking ${bookingId}: ${err.message}`),
-    );
-    this.mailService.sendAdminBookingAlert(confirmedBooking).catch((err) =>
-      this.logger.error(`sendAdminBookingAlert failed for booking ${bookingId}: ${err.message}`),
-    );
-    this.whatsappService.sendAdminBookingAlert(confirmedBooking).catch((err) =>
-      this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${bookingId}: ${err.message}`),
-    );
-    this.whatsappService.sendCustomerBookingConfirmation(confirmedBooking).catch((err) =>
-      this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${bookingId}: ${err.message}`),
     );
 
     return { success: true, message: 'Payment verified and booking confirmed' };

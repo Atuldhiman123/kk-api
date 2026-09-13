@@ -36,17 +36,9 @@ export class MailService {
       return null;
     }
 
-    const hostIp = await this.getIPv4Host();
-
     this.transporter = nodemailer.createTransport({
-      host: hostIp,
-      port: 587,
-      secure: false,
+      service: 'gmail',
       auth: { user, pass },
-      tls: {
-        rejectUnauthorized: false,
-        servername: 'smtp.gmail.com',
-      },
       connectionTimeout: 10000,
       greetingTimeout: 8000,
       socketTimeout: 10000,
