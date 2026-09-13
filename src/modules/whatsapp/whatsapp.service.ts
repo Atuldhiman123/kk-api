@@ -26,15 +26,21 @@ export class WhatsappService {
    */
   async sendMetaWhatsAppMessage(to: string, text: string, overridePhoneId?: string): Promise<boolean> {
     const token = this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
-    const phoneId = overridePhoneId || this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID') || '1351113624747250';
+    let phoneId = overridePhoneId || this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID') || '1351113624747250';
+    if (phoneId === '1335965001676633' || !phoneId) {
+      phoneId = '1351113624747250';
+    }
 
-    if (!token || !phoneId) {
-      this.logger.error('Missing WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID');
+    if (!token) {
+      this.logger.error('Missing WHATSAPP_ACCESS_TOKEN in config');
       return false;
     }
 
     try {
       let formattedTo = to.replace(/[^0-9]/g, '');
+      if (formattedTo.length === 11 && formattedTo.startsWith('0')) {
+        formattedTo = formattedTo.substring(1);
+      }
       if (formattedTo.length === 10) {
         formattedTo = '91' + formattedTo;
       }
