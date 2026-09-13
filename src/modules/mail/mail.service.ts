@@ -38,16 +38,14 @@ export class MailService {
 
     const hostIp = await this.getIPv4Host();
 
-    const port = Number(this.configService.get<string>('SMTP_PORT')) || 465;
-    const isSecure = this.configService.get<string>('SMTP_SECURE') === 'true' || port === 465;
-
     this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port,
-      secure: isSecure,
+      host: hostIp,
+      port: 587,
+      secure: false,
       auth: { user, pass },
       tls: {
         rejectUnauthorized: false,
+        servername: 'smtp.gmail.com',
       },
       connectionTimeout: 10000,
       greetingTimeout: 8000,
