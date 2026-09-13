@@ -187,15 +187,8 @@ export class BookingService {
 
     const fullBooking = await this.findById(booking.id);
 
-    // 1. Admin booking alert (Email + WhatsApp) should ALWAYS be sent immediately on booking creation
-    this.mailService.sendAdminBookingAlert(fullBooking).catch((err) =>
-      this.logger.error(`sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
-    );
-    this.whatsappService.sendAdminBookingAlert(fullBooking).catch((err) =>
-      this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
-    );
-
-    // 2. For Razorpay, customer confirmation is sent in verifyPayment after payment succeeds
+    // If Razorpay, do NOT send any email or WhatsApp before payment.
+    // Everything will be dispatched in verifyPayment() once the payment is completed.
     if (razorpayOrderData) {
       return {
         ...fullBooking,
@@ -203,9 +196,15 @@ export class BookingService {
       };
     }
 
-    // 3. For non-Razorpay (offline/manual UPI) bookings, send customer confirmation now
+    // Only for non-Razorpay (offline/manual UPI where payment screenshot was submitted):
+    this.mailService.sendAdminBookingAlert(fullBooking).catch((err) =>
+      this.logger.error(`sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
+    );
     this.mailService.sendBookingConfirmation(fullBooking).catch((err) =>
       this.logger.error(`sendBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
+    );
+    this.whatsappService.sendAdminBookingAlert(fullBooking).catch((err) =>
+      this.logger.error(`WhatsApp sendAdminBookingAlert failed for booking ${fullBooking.id}: ${err.message}`),
     );
     this.whatsappService.sendCustomerBookingConfirmation(fullBooking).catch((err) =>
       this.logger.error(`WhatsApp sendCustomerBookingConfirmation failed for booking ${fullBooking.id}: ${err.message}`),
