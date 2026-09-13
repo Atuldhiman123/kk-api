@@ -48,7 +48,7 @@ export class MailService {
   }
 
   public initializeTransporter() {
-    this.getTransporter().catch(() => {});
+    this.getTransporter().catch(() => { });
   }
 
   private getFromHeader(): string {

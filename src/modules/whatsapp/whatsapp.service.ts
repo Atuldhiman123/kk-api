@@ -10,7 +10,7 @@ export class WhatsappService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   private getAdminPhone(): string {
     const raw = this.configService.get<string>('ADMIN_WHATSAPP_PHONE') || '919317117001';

@@ -28,7 +28,7 @@ export class BookingService {
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
     private readonly whatsappService: WhatsappService,
-  ) {}
+  ) { }
 
   async create(dto: CreateBookingDto) {
     if (

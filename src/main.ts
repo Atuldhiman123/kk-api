@@ -14,7 +14,7 @@ async function bootstrap() {
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, server-to-server)
       if (!origin) return callback(null, true);
-      
+
       const allowed = [
         'https://kundlikendra.netlify.app',
         'http://localhost:3000',
