@@ -53,14 +53,15 @@ export class WhatsappController {
       const changes = entry?.changes?.[0];
       const value = changes?.value;
       const message = value?.messages?.[0];
+      const phoneNumberId = value?.metadata?.phone_number_id;
 
       if (message && message.type === 'text') {
         const from = message.from;
         const text = message.text?.body || '';
-        this.logger.log(`WhatsApp message from ${from}: ${text}`);
+        this.logger.log(`WhatsApp message from ${from}: ${text} (Phone ID: ${phoneNumberId})`);
 
         // Auto-reply logic if Meta access token is configured
-        await this.whatsappService.handleIncomingMessage(from, text);
+        await this.whatsappService.handleIncomingMessage(from, text, phoneNumberId);
       }
 
       // Meta requires a 200 OK fast response to acknowledge receipt

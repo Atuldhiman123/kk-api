@@ -20,11 +20,12 @@ export class WhatsappService {
   /**
    * Send WhatsApp message via Meta Cloud API (Graph API)
    */
-  async sendMetaWhatsAppMessage(to: string, text: string): Promise<boolean> {
+  async sendMetaWhatsAppMessage(to: string, text: string, overridePhoneId?: string): Promise<boolean> {
     const token = this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
-    const phoneId = this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID');
+    const phoneId = overridePhoneId || this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID') || '1351113624747250';
 
     if (!token || !phoneId) {
+      this.logger.error('Missing WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID');
       return false;
     }
 
@@ -62,7 +63,7 @@ export class WhatsappService {
   /**
    * Handle incoming messages from customers via Meta Webhook
    */
-  async handleIncomingMessage(from: string, text: string): Promise<void> {
+  async handleIncomingMessage(from: string, text: string, phoneId?: string): Promise<void> {
     const lowerText = (text || '').toLowerCase().trim();
 
     let replyText =
@@ -92,7 +93,7 @@ export class WhatsappService {
         `धन्यवाद! 🙏`;
     }
 
-    await this.sendMetaWhatsAppMessage(from, replyText);
+    await this.sendMetaWhatsAppMessage(from, replyText, phoneId);
   }
 
   /**
